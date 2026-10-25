@@ -7,7 +7,7 @@ B = "http://localhost:8077"
 
 async def main():
     async with async_playwright() as p:
-        br = await p.chromium.launch(args=["--autoplay-policy=no-user-gesture-required"])
+        br = await p.chromium.launch(args=["--autoplay-policy=no-user-gesture-required", "--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"])
         pg = await br.new_page(viewport={"width": 1280, "height": 720})
         logs = []
         pg.on("console", lambda m: logs.append(m.type + ": " + m.text))

@@ -180,5 +180,243 @@
     } catch (e) {}
   };
 
+  // ================================================================ extras de navegación
+  var finePointer = false;
+  try { finePointer = root.matchMedia('(hover: hover) and (pointer: fine)').matches; } catch (e) {}
+  function tv() { return !!CP.isTV; }
+
+  // ------------------------------------------------ fondo 3D (three.js, carga diferida)
+  var scene = null, sceneQueue = [];
+  /** Llama a un método del fondo 3D; si aún no ha cargado, se aplica al terminar de cargar. */
+  fx.scene = function (method, arg) {
+    if (scene) { try { scene[method](arg); } catch (e) {} }
+    else sceneQueue.push([method, arg]);
+  };
+  /** Carga el fondo 3D después del primer pintado. Nunca en teles (salvo ?fx=full) ni con "reducir movimiento". */
+  fx.startScene = function () {
+    var force = /[?&]fx=full/.test(location.search);
+    if (/[?&]fx=lite/.test(location.search) || reduced || (tv() && !force)) return;
+    var probe = document.createElement('canvas');
+    var gl = null;
+    try { gl = probe.getContext('webgl') || probe.getContext('experimental-webgl'); } catch (e) {}
+    if (!gl) return;
+    var canvas = document.createElement('canvas');
+    canvas.id = 'bg3d';
+    canvas.setAttribute('aria-hidden', 'true');
+    document.body.insertBefore(canvas, document.body.firstChild);
+    var s = document.createElement('script');
+    s.src = 'vendor/cp-scene.min.js';
+    s.async = true;
+    s.onload = function () {
+      if (!root.CPScene) return;
+      scene = root.CPScene.start(canvas, { tint: '#5B4BD6', maxDpr: 1.5 });
+      if (!scene) { canvas.parentNode.removeChild(canvas); return; }
+      document.documentElement.classList.add('has-scene');
+      sceneQueue.forEach(function (q) { fx.scene(q[0], q[1]); });
+      sceneQueue = [];
+    };
+    (root.requestIdleCallback || function (f) { setTimeout(f, 300); })(function () { document.body.appendChild(s); });
+  };
+  fx.PLATFORM_TINT = { all: '#5B4BD6', ps2: '#2F4BDB', gc: '#7A5CFF', wii: '#38C5F2' };
+
+  // ------------------------------------- brillo de foco que viaja (D-pad / teclado / mando)
+  var modality = 'pointer';
+  /** Un único anillo ámbar que se desliza con muelle hasta el elemento enfocado.
+   *  Con ratón no se ve (el ratón ya dice dónde estás); con mando o teclado, siempre. */
+  fx.focusGlow = function () {
+    if (!M || !fx.hasMotion) return; // sin Motion queda el anillo CSS de siempre
+    if (tv()) modality = 'key'; // en la tele todo es mando
+    var glow = document.createElement('div');
+    glow.className = 'focus-glow';
+    glow.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(glow);
+    document.documentElement.classList.add('glow-ready');
+    var current = null, shown = false, raf = 0;
+
+    function targetOf(el) { return (el.classList && el.classList.contains('tile') && el.querySelector('.case')) || el; }
+    function rectOf(el) {
+      var t = targetOf(el), r = t.getBoundingClientRect(), cs = root.getComputedStyle(t);
+      return { x: r.left - 5, y: r.top - 5, width: r.width + 10, height: r.height + 10, radius: (parseFloat(cs.borderTopLeftRadius) || 8) + 5 };
+    }
+    function place(animated) {
+      if (!current) return;
+      var r = rectOf(current);
+      var props = { x: r.x, y: r.y, width: r.width + 'px', height: r.height + 'px', borderRadius: r.radius + 'px' };
+      // sin animar también pasa por Motion: así el siguiente muelle sale de la posición real
+      fx.animate(glow, props, animated ? { type: M.spring, stiffness: 520, damping: 38, mass: 0.8 } : { duration: 0 });
+    }
+    function visible(v) {
+      if (v === shown) return;
+      shown = v;
+      document.documentElement.classList.toggle('glow-on', v);
+      fx.animate(glow, { opacity: v ? 1 : 0 }, { duration: v ? 0.18 : 0.12 });
+    }
+    document.addEventListener('focusin', function (e) {
+      var el = e.target;
+      if (!el || el === document.body || el.tagName === 'VIDEO') { current = null; visible(false); return; }
+      var first = !current;
+      current = el;
+      if (modality === 'pointer' && !tv()) { visible(false); return; }
+      place(!first && shown);
+      visible(true);
+    });
+    document.addEventListener('focusout', function (e) {
+      if (!e.relatedTarget) { current = null; visible(false); }
+    });
+    // pegado al elemento mientras se hace scroll o cambia el tamaño
+    function follow() {
+      if (raf) return;
+      raf = root.requestAnimationFrame(function () { raf = 0; if (shown) place(true); });
+    }
+    document.addEventListener('scroll', follow, true);
+    root.addEventListener('resize', follow);
+    root.addEventListener('keydown', function (e) {
+      if (e.keyCode >= 37 && e.keyCode <= 40 || e.keyCode === 9) { modality = 'key'; if (current && !shown) { place(false); visible(true); } }
+    }, true);
+    root.addEventListener('pointerdown', function (e) { if (e.pointerType === 'mouse' || e.pointerType === 'touch') { modality = 'pointer'; visible(false); } }, true);
+    root.addEventListener('gamepadconnected', function () { modality = 'key'; });
+    fx.glowRefresh = function () { if (current && shown) place(false); };
+    fx.setModality = function (m) { modality = m; };
+  };
+
+  // ------------------------------------------------- inclinación 3D con brillo (solo ratón)
+  /** La caja del juego se inclina hacia el puntero y un reflejo la recorre. */
+  fx.tilt = function (container, selector) {
+    if (!fx.hasMotion || !finePointer || tv() || !container) return;
+    var active = null;
+    function reset(el) {
+      var c = el && el.querySelector('.case');
+      if (c) fx.animate(c, { rotateX: 0, rotateY: 0 }, fx.spring(260, 22));
+      if (el) el.classList.remove('tilting');
+    }
+    container.addEventListener('pointermove', function (e) {
+      if (e.pointerType !== 'mouse') return;
+      var el = e.target.closest ? e.target.closest(selector) : null;
+      if (el !== active) { reset(active); active = el; }
+      if (!el) return;
+      var c = el.querySelector('.case');
+      if (!c) return;
+      var r = c.getBoundingClientRect();
+      var px = (e.clientX - r.left) / r.width, py = (e.clientY - r.top) / r.height;
+      c.style.setProperty('--gx', (px * 100).toFixed(1) + '%');
+      c.style.setProperty('--gy', (py * 100).toFixed(1) + '%');
+      el.classList.add('tilting');
+      fx.animate(c, { rotateX: (0.5 - py) * 14, rotateY: (px - 0.5) * 16 }, fx.spring(320, 26));
+    });
+    container.addEventListener('pointerleave', function () { reset(active); active = null; });
+  };
+
+  // ------------------------------------------- texto que rueda (inspirado en Skiper UI 58)
+  /** Al pasar el ratón cada letra sube y la copia de abajo ocupa su sitio, en cascada. Solo CSS. */
+  fx.textRoll = function (els) {
+    if (reduced || tv()) return;
+    Array.prototype.forEach.call(els, function (el) {
+      if (el.getAttribute('data-roll')) return;
+      var text = el.textContent;
+      if (!text || el.children.length) return;
+      var chars = text.split('').map(function (c, i) {
+        return '<span style="transition-delay:' + (i * 0.022).toFixed(3) + 's">' + (c === ' ' ? '&nbsp;' : c.replace(/[&<>]/g, '')) + '</span>';
+      }).join('');
+      el.setAttribute('data-roll', '1');
+      el.setAttribute('aria-label', text);
+      el.innerHTML = '<span class="roll" aria-hidden="true"><span class="roll-a">' + chars + '</span><span class="roll-b">' + chars + '</span></span>';
+    });
+  };
+
+  // --------------------------------------- palabra que va cambiando (inspirado en Skiper UI 62)
+  fx.rotateWords = function (el, words, every) {
+    if (!el || !words || words.length < 2) return;
+    var i = 0;
+    el.textContent = words[0];
+    if (reduced) return;
+    if (el._rot) clearInterval(el._rot);
+    el._rot = setInterval(function () {
+      if (!document.body.contains(el) || el.offsetParent === null) return;
+      i = (i + 1) % words.length;
+      fx.animate(el, { opacity: 0, y: -14 }, { duration: 0.22 }).then(function () {
+        el.textContent = words[i];
+        fx.animate(el, { opacity: [0, 1], y: [14, 0] }, fx.spring(420, 30));
+      });
+    }, every || 2200);
+  };
+
+  // ------------------------------------------------------ código tipo panel de aeropuerto
+  /** Cada carácter del código cae como una pala de split-flap; al cambiar, las viejas se pliegan antes. */
+  fx.flapCode = function (el, code) {
+    var draw = function () {
+      el.innerHTML = code.split('').map(function (c) { return '<span class="flap">' + c.replace(/[&<>]/g, '') + '</span>'; }).join('');
+      if (!fx.hasMotion) return done();
+      return fx.animate(Array.prototype.slice.call(el.children), { rotateX: [-95, 0], opacity: [0, 1] }, { delay: M.stagger(0.06), type: M.spring, stiffness: 300, damping: 20 });
+    };
+    if (el.children.length && fx.hasMotion) {
+      return fx.animate(Array.prototype.slice.call(el.children), { rotateX: 95, opacity: 0 }, { delay: M.stagger(0.03), duration: 0.18 }).then(draw);
+    }
+    return draw();
+  };
+
+  // ------------------------------------------------------------------ ondas al pulsar
+  fx.ripple = function (scope) {
+    if (reduced || !fx.hasMotion) return;
+    scope.addEventListener('pointerdown', function (e) {
+      var b = e.target.closest ? e.target.closest('.btn, .filter') : null;
+      if (!b) return;
+      var r = b.getBoundingClientRect(), size = Math.max(r.width, r.height) * 2.2;
+      var dot = document.createElement('span');
+      dot.className = 'ripple';
+      dot.style.width = dot.style.height = size + 'px';
+      dot.style.left = (e.clientX - r.left - size / 2) + 'px';
+      dot.style.top = (e.clientY - r.top - size / 2) + 'px';
+      b.appendChild(dot);
+      fx.animate(dot, { scale: [0, 1], opacity: [0.35, 0] }, { duration: 0.6, ease: [0.2, 0.7, 0.3, 1] }).then(function () { if (dot.parentNode) dot.parentNode.removeChild(dot); });
+    });
+  };
+
+  // ------------------------------------------------------ cambio de pantalla
+  /** La pantalla nueva entra desde un poco más cerca y la anterior se va hacia atrás. */
+  fx.screenSwap = function (prev, next) {
+    if (!fx.hasMotion) return;
+    if (prev && prev !== next) {
+      prev.classList.add('leaving');
+      fx.animate(prev, { opacity: [1, 0], scale: [1, 0.97] }, { duration: 0.22 }).then(function () {
+        prev.classList.remove('leaving'); prev.style.opacity = ''; prev.style.transform = '';
+      });
+    }
+    fx.animate(next, { opacity: [0, 1], scale: [1.025, 1] }, { type: M.spring, stiffness: 260, damping: 30 }).then(function () { next.style.transform = ''; });
+  };
+
+  // ------------------------------------------- aparecer al entrar en pantalla (Motion inView)
+  /** Las carátulas aparecen en cascada a medida que entran en la vista (también al bajar con el mando). */
+  fx.revealOnView = function (els, scrollRoot) {
+    if (!fx.hasMotion || !M.inView) return;
+    var batch = 0, batchTimer = null;
+    Array.prototype.forEach.call(els, function (el) {
+      el.style.opacity = '0';
+      M.inView(el, function () {
+        var d = batch++ * 0.035;
+        clearTimeout(batchTimer);
+        batchTimer = setTimeout(function () { batch = 0; }, 80);
+        fx.animate(el, { opacity: [0, 1], y: [26, 0], scale: [0.94, 1] }, { delay: d, type: M.spring, stiffness: 300, damping: 26 }).then(function () { el.style.transform = ''; });
+      }, { root: scrollRoot || undefined, amount: 0.15 });
+    });
+  };
+
+  // ------------------------------------------- barra superior que se condensa con el scroll
+  fx.condense = function (scroller, bar, progress) {
+    if (!scroller || !bar) return;
+    var on = false, raf = 0;
+    scroller.addEventListener('scroll', function () {
+      if (raf) return;
+      raf = root.requestAnimationFrame(function () {
+        raf = 0;
+        var v = scroller.scrollTop > 12;
+        if (v !== on) { on = v; bar.classList.toggle('condensed', v); }
+      });
+    }, { passive: true });
+    // barra de progreso ligada al scroll (Motion scroll)
+    if (progress && fx.hasMotion && M.scroll) {
+      try { M.scroll(M.animate(progress, { scaleX: [0, 1] }, { ease: 'linear' }), { container: scroller }); } catch (e) {}
+    }
+  };
+
   CP.fx = fx;
 })(window);

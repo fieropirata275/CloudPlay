@@ -25,7 +25,7 @@
       <div class="login-brand">
         <svg class="mark" viewBox="0 0 200 200" aria-hidden="true"><path class="mark-shape" fill="url(#g-plastic)"/></svg>
         <h1 class="wordmark">CloudPlay</h1>
-        <p class="lede">Tus juegos de PS2, GameCube y Wii en cualquier pantalla.</p>
+        <p class="lede">Tus juegos de PS2, GameCube y Wii en <span class="rot-wrap"><span class="rot" id="lede-rot">cualquier pantalla</span></span></p>
       </div>
       <div class="login-panel">
         <div class="pair">
@@ -49,6 +49,7 @@
             <button id="server-save" class="btn" type="button">Guardar</button>
           </div>
         </details>
+        <p class="credits">Animado con Motion, GSAP y three.js · efectos inspirados en Skiper UI</p>
       </div>
     </div>
   </section>
@@ -89,10 +90,12 @@
       <input id="search" class="search" type="search" placeholder="Buscar juego" aria-label="Buscar juego">
       <a id="admin-link" class="btn quiet" href="#/admin" hidden>Panel</a>
       <button id="logout" class="btn quiet">Salir</button>
+      <span class="topbar-progress" aria-hidden="true"></span>
     </header>
 
     <main class="library">
       <section id="resume" class="resume" hidden>
+        <span class="resume-shine" aria-hidden="true"></span>
         <div class="resume-art" id="resume-art"></div>
         <div class="resume-body">
           <p class="resume-kicker" id="resume-kicker">Partida abierta</p>
@@ -136,12 +139,14 @@
     <video id="video" autoplay playsinline></video>
 
     <div id="boot" class="boot">
+      <div class="boot-glow" id="boot-glow" aria-hidden="true"></div>
       <svg class="boot-mark" viewBox="0 0 200 200" aria-hidden="true">
         <path id="boot-shape" fill="url(#g-plastic)"/>
         <path id="boot-detail" fill="none" stroke="#E8F1FF" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" opacity="0"/>
       </svg>
       <p class="boot-game" id="boot-game"></p>
       <p class="boot-queue" id="boot-queue" hidden><span id="boot-pos">1</span><small>en la cola</small></p>
+      <div class="boot-track" aria-hidden="true"><i id="boot-line"></i></div>
       <ol class="boot-steps" id="boot-steps">
         <li data-step="queue" hidden>Esperando un hueco libre</li>
         <li data-step="booting">Encendiendo la consola</li>

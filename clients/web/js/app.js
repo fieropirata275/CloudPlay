@@ -24,10 +24,19 @@
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
   }
+  // Intensidad del fondo 3D en cada pantalla (en la partida se apaga del todo)
+  var SCENE_LEVEL = { 'screen-login': 1, 'screen-link': 1, 'screen-library': 0.6, 'screen-admin': 0.35, 'screen-player': 1 };
   function show(id) {
     var next = document.getElementById(id);
+    var prev = $('.screen.active');
     $$('.screen').forEach(function (s) { s.classList.toggle('active', s === next); });
-    if (id !== 'screen-player') fx.animate(next, { opacity: [0, 1] }, { duration: 0.25 });
+    if (id !== 'screen-player') {
+      fx.screenSwap(prev, next);
+      document.documentElement.classList.remove('in-game');
+      fx.scene('resume');
+      fx.scene('warp', false);
+    }
+    fx.scene('setLevel', SCENE_LEVEL[id] || 0.6);
     setTimeout(CP.navFocusFirst, 40);
   }
   var toastTimer;
@@ -45,8 +54,13 @@
 
   function openSheet(el) {
     el.hidden = false;
+    var card = el.firstElementChild;
     fx.animate(el, { opacity: [0, 1] }, { duration: 0.18 });
-    fx.animate(el.firstElementChild, { y: [40, 0], scale: [0.96, 1] }, fx.spring(440, 30));
+    fx.animate(card, { y: [40, 0], scale: [0.94, 1], rotateX: [8, 0] }, fx.spring(440, 30));
+    // el contenido entra en cascada detrás de la tarjeta
+    fx.animate(Array.prototype.slice.call(card.children), { opacity: [0, 1], y: [12, 0] }, { delay: fx.stagger(0.03, { startDelay: 0.06 }), duration: 0.3 });
+    // el anillo de foco se recoloca cuando la tarjeta termina de asentarse
+    if (fx.glowRefresh) setTimeout(fx.glowRefresh, 520);
   }
   function closeSheet(el) {
     return fx.animate(el, { opacity: 0 }, { duration: 0.14 }).then(function () { el.hidden = true; el.style.opacity = ''; });
@@ -116,10 +130,9 @@
     startDeviceFlow();
   }
 
+  /** El código cae letra a letra como un panel de aeropuerto (split-flap). */
   function setCode(code) {
-    var el = $('#device-code');
-    el.innerHTML = code.split('').map(function (c) { return '<span>' + esc(c) + '</span>'; }).join('');
-    fx.animate(el.children, { opacity: [0, 1], y: [14, 0] }, { delay: fx.stagger(0.05), duration: 0.35 });
+    fx.flapCode($('#device-code'), code);
   }
 
   function startDeviceFlow() {
@@ -200,7 +213,9 @@
       if (!state.introDone) {
         state.introDone = true;
         $$('#screen-library .library h2').forEach(function (h, i) { fx.splitReveal(h, { type: 'chars', stagger: 0.018, delay: 0.05 + i * 0.12 }); });
-        fx.animate($$('#screen-library .tile'), { opacity: [0, 1], y: [18, 0] }, { delay: fx.stagger(0.025, { startDelay: 0.05 }), duration: 0.4 });
+        // Motion inView: cada carátula aparece cuando entra en la vista, también al bajar con el mando
+        fx.revealOnView($$('#screen-library .tile'), $('#screen-library'));
+        if (fx.hasMotion && !$('#resume').hidden) fx.animate($('#resume'), { opacity: [0, 1], x: [-30, 0] }, fx.spring(260, 26));
       }
       setTimeout(CP.navFocusFirst, 60);
     }).catch(function (e) { if (e.status !== 401) toast(e.message); });
@@ -277,6 +292,7 @@
     b.addEventListener('click', function () {
       state.filter = b.getAttribute('data-platform');
       $$('.filter').forEach(function (x) { x.classList.toggle('on', x === b); });
+      fx.scene('setTint', fx.PLATFORM_TINT[state.filter] || fx.PLATFORM_TINT.all);
       movePill(true);
       drawAll(true);
     });
@@ -303,6 +319,13 @@
   });
   fx.focusSpring(lib, '.tile', 1.06);
   fx.pointer($$('.btn, .filter'));
+  fx.tilt(lib, '.tile');
+  fx.condense($('#screen-library'), $('#screen-library .topbar'), $('#screen-library .topbar-progress'));
+  fx.condense($('#screen-admin'), $('#screen-admin .topbar'));
+  fx.textRoll($$('.topbar .btn.quiet, .topbar .brand span'));
+  fx.ripple(document.body);
+  fx.focusGlow();
+  fx.rotateWords($('#lede-rot'), ['la tele', 'el móvil', 'el navegador', 'la Android TV', 'cualquier pantalla'], 2300);
 
   /** Favorito: optimista, con el "+" transformándose en estrella (MorphSVG) y un pop con muelle. */
   function toggleFav(tile) {
@@ -380,6 +403,7 @@
     var el = $('#boot');
     if (name === 'error') { $('#boot-msg').textContent = data.text || 'Algo ha fallado.'; bootShape('warn'); return; }
     if (name === 'reconnecting') {
+      sceneInGame(false);
       if (el.hidden) { el.hidden = false; fx.animate(el, { opacity: [0, 0.92] }, { duration: 0.3 }); }
       $('#boot-msg').textContent = '';
       setStep('linking');
@@ -398,6 +422,7 @@
     if (name === 'linking') { setStep('linking'); bootShape(boot.platform); }
     if (name === 'live') {
       setStep('live');
+      sceneInGame(true);
       bootShape('play').then(function () {
         return fx.animate(el, { opacity: 0, scale: 1.04 }, { duration: 0.45 });
       }).then(function () { el.hidden = true; el.style.opacity = ''; el.style.transform = ''; });
@@ -405,12 +430,33 @@
   }
   function setStep(name) {
     var idx = STEPS.indexOf(name);
+    var shown = $$('#boot-steps li').filter(function (li) { return !li.hidden; });
     $$('#boot-steps li').forEach(function (li) {
       var i = STEPS.indexOf(li.getAttribute('data-step'));
+      var wasNow = li.classList.contains('now');
       li.classList.toggle('done', i < idx);
       li.classList.toggle('now', i === idx);
+      if (i === idx && !wasNow) fx.animate(li, { scale: [1.12, 1], y: [-4, 0] }, fx.spring(500, 16));
     });
+    // la pista se llena hasta el paso actual con un muelle
+    var pos = shown.map(function (li) { return li.getAttribute('data-step'); }).indexOf(name);
+    var frac = shown.length > 1 ? Math.max(0, pos) / (shown.length - 1) : 1;
+    fx.animate($('#boot-line'), { scaleX: Math.max(0.04, frac) }, fx.spring(120, 20));
     boot.step = name;
+  }
+  /** En la partida el fondo 3D se apaga y se pausa: la GPU y la CPU son para el vídeo. */
+  var scenePauseTimer;
+  function sceneInGame(on) {
+    clearTimeout(scenePauseTimer);
+    if (on) {
+      fx.scene('warp', false);
+      document.documentElement.classList.add('in-game');
+      scenePauseTimer = setTimeout(function () { fx.scene('pause'); }, 900);
+    } else {
+      document.documentElement.classList.remove('in-game');
+      fx.scene('resume');
+      fx.scene('warp', true);
+    }
   }
   function bootShape(name) {
     if (!name || boot.shape === name) return Promise.resolve();
@@ -428,6 +474,14 @@
     boot = { step: null, shape: 'cloud', platform: game ? game.platform : 'play' };
     $('#boot-shape').setAttribute('d', fx.SHAPES.cloud);
     $('#boot-detail').setAttribute('d', '');
+    $('#boot-line').style.transform = 'scaleX(0)';
+    // el fondo entra en "warp" del color de la consola mientras arranca
+    var tint = fx.PLATFORM_TINT[game && game.platform] || fx.PLATFORM_TINT.all;
+    fx.scene('setTint', tint);
+    sceneInGame(false);
+    var glow = $('#boot-glow');
+    glow.style.background = 'radial-gradient(circle, ' + tint + '88, ' + tint + '00 62%)';
+    if (fx.hasMotion && !glow._pulse) glow._pulse = fx.animate(glow, { scale: [1, 1.14, 1], opacity: [0.45, 0.75, 0.45] }, { duration: 3.2, repeat: Infinity, ease: 'easeInOut' });
     $('#boot-game').textContent = game ? game.title : '';
     fx.splitReveal($('#boot-game'), { type: 'chars', stagger: 0.03, delay: 0.25, duration: 0.6 });
     $('#boot-msg').textContent = '';
@@ -540,11 +594,13 @@
 
   function endPlayer() {
     if (state.player) { state.player.close(); state.player = null; }
+    clearTimeout(scenePauseTimer);
     if (root.gsap) root.gsap.killTweensOf('#boot-shape');
     state.session = null;
     $('#stats').hidden = true;
   }
   function backToLibrary() { location.hash = '#/library'; }
 
+  fx.startScene();
   route();
 })(window);

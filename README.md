@@ -34,6 +34,12 @@ clientes ──WebRTC (H.264/Opus + input)──▶ nodos GPU (un contenedor por
 - **Más animación en el cliente** sin romper las teles: la cuadrícula se reordena con GSAP Flip al filtrar o buscar,
   la carátula pulsada vuela hasta la pantalla de arranque, titulares letra a letra con SplitText y muelles de
   Motion al pasar el ratón o pulsar.
+- **Capa de movimiento de la app**:
+  - Fondo 3D con three.js que se tiñe con la plataforma y entra en "warp" mientras arranca la consola; se apaga y se pausa en cuanto hay vídeo. No se carga en teles (`?fx=full` lo fuerza, `?fx=lite` lo quita).
+  - Un anillo de foco ámbar que viaja con muelle entre elementos al navegar con mando, teclado o mando de la tele.
+  - Transiciones entre pantallas, barra superior que se condensa con el scroll (con barra de progreso de Motion `scroll`), carátulas que aparecen con `inView`, inclinación con reflejo al pasar el ratón.
+  - Código de la tele tipo split-flap, palabra que rota en el login, menú y panel con entrada en cascada, pista de arranque que se llena por pasos.
+  - Efectos inspirados en Skiper UI portados a JS sin React: texto que rueda, desenfoque progresivo y palabra rotatoria.
 - **Web comercial** (`landing/`) con solicitudes de demo que llegan al panel del NOC.
 
 > ⚖️ Solo ROMs y BIOS volcadas de juegos y consolas que poseas. Ofrecer juegos comerciales a

@@ -2,7 +2,7 @@
 (function (root) {
   'use strict';
   var CP = root.CP;
-  var timer = null;
+  var timer = null, first = true;
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -72,6 +72,7 @@
       }).join('') : '<tr><td colspan="6" class="muted">Aún no hay solicitudes desde la web.</td></tr>';
 
       document.getElementById('admin-updated').textContent = 'Actualizado ' + new Date().toLocaleTimeString('es-ES');
+      if (first) { first = false; entrance(); }
     }).catch(function (e) { CP.toast(e.message); });
   }
 
@@ -82,8 +83,22 @@
     CP.api('DELETE', '/api/admin/sessions/' + id).then(function () { CP.toast('Partida cerrada'); refresh(); });
   });
 
+  /** Primera vez: las métricas caen en cascada, las filas entran y las barras de carga se llenan. */
+  function entrance() {
+    var fx = CP.fx;
+    if (!fx.hasMotion) return;
+    var all = function (sel) { return Array.prototype.slice.call(document.querySelectorAll(sel)); };
+    fx.animate(all('#kpis .kpi'), { opacity: [0, 1], y: [24, 0], scale: [0.92, 1] }, { delay: fx.stagger(0.05), type: root.Motion.spring, stiffness: 320, damping: 24 });
+    fx.animate(all('#screen-admin tbody tr'), { opacity: [0, 1], x: [-16, 0] }, { delay: fx.stagger(0.03, { startDelay: 0.2 }), duration: 0.35 });
+    all('#screen-admin .load i').forEach(function (bar) {
+      var w = bar.style.width;
+      fx.animate(bar, { width: ['0%', w] }, { delay: 0.35, duration: 0.9, ease: [0.65, 0, 0.35, 1] });
+    });
+  }
+
   CP.adminStart = function () {
     CP.adminStop();
+    first = true;
     refresh();
     timer = setInterval(refresh, 5000);
   };
