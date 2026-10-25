@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 
-import { TiltCard } from "./MotionKit";
+import { RevealText, SpotlightCard, TiltCard } from "./MotionKit";
 
 const POINTS = [
   { title: "Tus servidores, tus datos", text: "Despliegas el control plane y los nodos GPU en tu infraestructura con Docker. Nada sale de tu red salvo el vídeo hacia el jugador." },
@@ -16,7 +16,7 @@ export function Business() {
     <section id="empresas" className="mx-auto max-w-6xl px-5 py-24">
       <div className="grid gap-12 lg:grid-cols-[1fr_1.4fr] lg:items-center">
         <div>
-          <h2 className="font-display text-[clamp(2rem,4.5vw,3.6rem)] font-extrabold tracking-[-0.02em]">Para tu negocio</h2>
+          <RevealText as="h2" text="Para tu negocio" className="font-display text-[clamp(2rem,4.5vw,3.6rem)] font-extrabold tracking-[-0.02em]" />
           <p className="mt-4 text-lg text-mist">CloudPlay se instala en tu infraestructura y se opera desde un panel pensado para un NOC.</p>
         </div>
         <motion.div
@@ -32,7 +32,7 @@ export function Business() {
           </TiltCard>
         </motion.div>
       </div>
-      <ul className="mt-16 grid gap-x-10 gap-y-10 md:grid-cols-2">
+      <ul className="mt-16 grid gap-5 md:grid-cols-2">
         {POINTS.map((p, i) => (
           <motion.li
             key={p.title}
@@ -40,10 +40,13 @@ export function Business() {
             whileInView={{ opacity: 1, y: 0, filter: "blur(0px)" }}
             viewport={{ once: true, amount: 0.5 }}
             transition={{ type: "spring", stiffness: 140, damping: 20, delay: (i % 2) * 0.1 }}
-            className="border-t border-ink-3 pt-6"
           >
-            <h3 className="font-display text-xl font-extrabold">{p.title}</h3>
-            <p className="mt-2 text-mist">{p.text}</p>
+            <SpotlightCard className="h-full">
+              <div className="p-7">
+                <h3 className="font-display text-xl font-extrabold">{p.title}</h3>
+                <p className="mt-2 text-mist">{p.text}</p>
+              </div>
+            </SpotlightCard>
           </motion.li>
         ))}
       </ul>

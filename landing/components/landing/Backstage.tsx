@@ -1,6 +1,7 @@
 "use client";
 
 import { PerspectiveTextScroll } from "@/components/ui/skiper-ui/skiper28";
+import { RevealText } from "./MotionKit";
 
 const TASKS = [
   "Arranca la consola",
@@ -17,11 +18,9 @@ const TASKS = [
 /** Skiper28: la lista de lo que hace el servidor se aleja en perspectiva mientras bajas. */
 export function Backstage() {
   return (
-    <section aria-labelledby="backstage-title" className="relative">
+    <section aria-label="Lo que hace CloudPlay mientras juegas" className="relative">
       <div className="mx-auto max-w-6xl px-5 pt-24">
-        <h2 id="backstage-title" className="font-display text-[clamp(2rem,4.5vw,3.6rem)] font-extrabold tracking-[-0.02em]">
-          Mientras juegas, CloudPlay:
-        </h2>
+        <RevealText as="h2" text="Mientras juegas, CloudPlay:" className="font-display text-[clamp(2rem,4.5vw,3.6rem)] font-extrabold tracking-[-0.02em]" />
       </div>
       <PerspectiveTextScroll
         height="220vh"

@@ -1,11 +1,12 @@
 "use client";
 
-import { AnimatePresence, motion, useScroll, useSpring, useTransform } from "framer-motion";
+import { AnimatePresence, motion, useMotionTemplate, useMotionValue, useScroll, useSpring, useTransform } from "framer-motion";
 import { Play, X } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 
 import { useLoop } from "@/components/ui/skiper-ui/skiper62";
+import { useIntroDone } from "./intro-store";
 import { Magnetic } from "./MotionKit";
 
 import {
@@ -140,9 +141,30 @@ export function Hero() {
   const sceneOpacity = useTransform(scrollYProgress, [0, 0.55], [1, 0]);
   const sceneY = useTransform(scrollYProgress, [0, 1], [0, 220]);
   const sceneScale = useTransform(scrollYProgress, [0, 0.6], [1, 0.82]);
+  const ready = useIntroDone();
+  // Foco de luz que sigue al puntero por todo el hero
+  const mx = useMotionValue(-600);
+  const my = useMotionValue(-600);
+  const spot = useMotionTemplate`radial-gradient(520px circle at ${mx}px ${my}px, rgba(91,75,214,0.22), transparent 65%)`;
+  // El spot se "levanta" desde inclinado a plano según entra en pantalla
+  const reel = useRef<HTMLDivElement>(null);
+  const { scrollYProgress: reelP } = useScroll({ target: reel, offset: ["start end", "center center"] });
+  const reelRotate = useTransform(reelP, [0, 1], [28, 0]);
+  const reelScale = useTransform(reelP, [0, 1], [0.84, 1]);
+  const reelRadius = useTransform(reelP, [0, 1], [56, 24]);
 
   return (
-    <section ref={ref} id="inicio" className="relative mx-auto max-w-6xl px-5 pb-24 pt-36 md:pt-44">
+    <section
+      ref={ref}
+      id="inicio"
+      className="relative mx-auto max-w-6xl px-5 pb-24 pt-36 md:pt-44"
+      onPointerMove={(e) => {
+        const r = e.currentTarget.getBoundingClientRect();
+        mx.set(e.clientX - r.left);
+        my.set(e.clientY - r.top);
+      }}
+    >
+      <motion.div aria-hidden="true" style={{ background: spot }} className="pointer-events-none absolute inset-y-0 -inset-x-[30vw] z-0" />
       <motion.div
         style={{ opacity: sceneOpacity, y: sceneY, scale: sceneScale }}
         className="pointer-events-none absolute -right-24 top-10 z-0 h-[520px] w-[115%] opacity-60 sm:right-[-8%] md:top-6 md:h-[700px] md:w-[62%]"
@@ -164,14 +186,15 @@ export function Hero() {
         </div>
       </motion.div>
 
-      <h1 className="relative z-10 max-w-4xl font-display text-[clamp(2.4rem,6.2vw,5.2rem)] font-extrabold leading-[1.02] tracking-[-0.02em]">
+      <h1 className="relative z-10 max-w-4xl font-display text-[clamp(2.4rem,6.2vw,5.2rem)] font-extrabold leading-[1.02] tracking-[-0.02em]" style={{ perspective: 900 }}>
         {WORDS.map((w, i) => (
           <motion.span
             key={i}
             className="mr-[0.25em] inline-block"
-            initial={{ opacity: 0, y: "0.6em", filter: "blur(8px)" }}
-            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+            initial={{ opacity: 0, y: "0.6em", rotateX: -70, filter: "blur(8px)" }}
+            animate={ready ? { opacity: 1, y: 0, rotateX: 0, filter: "blur(0px)" } : undefined}
             transition={{ type: "spring", stiffness: 220, damping: 24, delay: 0.1 + i * 0.05 }}
+            style={{ transformOrigin: "50% 100%" }}
           >
             {w}
           </motion.span>
@@ -180,7 +203,7 @@ export function Hero() {
       <motion.p
         className="relative z-10 mt-6 max-w-xl text-lg text-mist md:text-xl"
         initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
+        animate={ready ? { opacity: 1, y: 0 } : undefined}
         transition={{ delay: 0.75, duration: 0.5 }}
       >
         Emulación en la nube sobre tus propios servidores. Tus clientes juegan en <RotatingScreen /> sin consola, sin
@@ -189,7 +212,7 @@ export function Hero() {
       <motion.div
         className="relative z-10 mt-9 flex flex-wrap items-center gap-3"
         initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
+        animate={ready ? { opacity: 1, y: 0 } : undefined}
         transition={{ delay: 0.9, duration: 0.5 }}
       >
         <Magnetic>
@@ -203,14 +226,17 @@ export function Hero() {
           </a>
         </Magnetic>
       </motion.div>
-      <motion.div
-        className="relative z-10 mt-16"
-        initial={{ opacity: 0, y: 40, scale: 0.97 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ delay: 1, type: "spring", stiffness: 120, damping: 20 }}
-      >
-        <Showreel />
-      </motion.div>
+      <div ref={reel} className="relative z-10 mt-16" style={{ perspective: 1400 }}>
+        <motion.div
+          style={{ rotateX: reelRotate, scale: reelScale, borderRadius: reelRadius, transformOrigin: "50% 100%" }}
+          initial={{ opacity: 0, y: 40 }}
+          animate={ready ? { opacity: 1, y: 0 } : undefined}
+          transition={{ delay: 1, type: "spring", stiffness: 120, damping: 20 }}
+          className="overflow-hidden"
+        >
+          <Showreel />
+        </motion.div>
+      </div>
     </section>
   );
 }

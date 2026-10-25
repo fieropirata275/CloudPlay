@@ -37,6 +37,16 @@ Instalados con `npx shadcn add @skiper-ui/<nombre>` en `components/ui/skiper-ui/
 ## Otras animaciones
 
 - **three.js** (`HeroScene.tsx`): nube de 6.500 partículas que se transforma en siluetas genéricas (torre, cubo, placa) con el morph en el shader. Se carga en un chunk aparte, se pausa fuera de pantalla y con "reducir movimiento" queda quieta.
-- **Motion** (`MotionKit.tsx`): barra de progreso de scroll, botones magnéticos, cinta de pantallas que acelera con la velocidad del scroll y captura del panel con inclinación 3D.
+- **Motion** (`MotionKit.tsx` y secciones):
+  - Intro de arranque (`Intro.tsx`): la nube se dibuja, se enciende el LED y sube la cortina. Una vez por sesión; se quita sola por CSS si falla el JS.
+  - Navegación que se esconde al bajar y pastilla de sección activa con `layoutId`.
+  - Hero con foco de luz que sigue al puntero, titular que se levanta en 3D y spot que pasa de inclinado a plano con el scroll.
+  - Manifiesto que se enciende palabra a palabra (`Manifesto.tsx`).
+  - Recorrido horizontal fijado "Del botón a la pantalla" con un paquete que viaja por 6 etapas (`Pipeline.tsx`).
+  - Titulares con máscara (`RevealText`), tarjetas con borde iluminado (`SpotlightCard`), inclinación por velocidad de scroll (`SkewOnScroll`).
+  - Cifras con parallax por columna, formulario con anillo de foco compartido, botón que se transforma en spinner y confeti al enviar.
+  - Pie con el nombre gigante que se abre al llegar y botón magnético para volver arriba.
+  - Barra de progreso de scroll, botones magnéticos, cinta que acelera con el scroll y captura del panel con inclinación 3D.
+  - Todo respeta "reducir movimiento".
 
 La versión gratuita de Skiper UI pide **atribución**: está en el pie de la página.

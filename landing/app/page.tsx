@@ -6,6 +6,10 @@ import { DemoForm } from "@/components/landing/DemoForm";
 import { Devices } from "@/components/landing/Devices";
 import { Footer } from "@/components/landing/Footer";
 import { Gallery } from "@/components/landing/Gallery";
+import { Intro } from "@/components/landing/Intro";
+import { Manifesto } from "@/components/landing/Manifesto";
+import { ScrollProgress } from "@/components/landing/MotionKit";
+import { Pipeline } from "@/components/landing/Pipeline";
 import { Hero } from "@/components/landing/Hero";
 import { HowItWorks } from "@/components/landing/HowItWorks";
 import { Nav } from "@/components/landing/Nav";
@@ -17,13 +21,17 @@ import { Stats } from "@/components/landing/Stats";
 export default function Home() {
   return (
     <SmoothScroll>
+      <Intro />
+      <ScrollProgress />
       <Cursor />
       <Nav />
       <main>
         <Hero />
         <Devices />
+        <Manifesto />
         <ScrollStatement />
         <HowItWorks />
+        <Pipeline />
         <Screens />
         <Gallery />
         <Consoles />

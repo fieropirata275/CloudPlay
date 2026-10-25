@@ -5,6 +5,7 @@ import { useRef } from "react";
 
 import { StickyCard_001 } from "@/components/ui/skiper-ui/skiper16";
 import { LinePath } from "@/components/ui/skiper-ui/skiper19";
+import { RevealText } from "./MotionKit";
 
 const STEPS = [
   { n: 1, title: "Elige el juego", text: "La biblioteca aparece sola con los juegos de tus servidores. Favoritos y jugados hace poco, a un botón.", img: "/screens/tv_library.webp" },
@@ -28,7 +29,7 @@ export function HowItWorks() {
         className="pointer-events-none absolute -right-[30%] top-24 z-0 h-auto w-[115%] opacity-40 md:-right-[12%] md:w-[80%]"
       />
       <div className="relative z-10 mx-auto max-w-6xl px-5 pt-24">
-        <h2 className="font-display text-[clamp(2rem,4.5vw,3.6rem)] font-extrabold tracking-[-0.02em]">Cómo funciona</h2>
+        <RevealText as="h2" text="Cómo funciona" className="font-display text-[clamp(2rem,4.5vw,3.6rem)] font-extrabold tracking-[-0.02em]" />
         <p className="mt-3 max-w-lg text-lg text-mist">Cuatro pasos desde el sofá hasta la partida.</p>
       </div>
       <div ref={container} className="relative z-10 pb-[40vh] pt-[10vh]">

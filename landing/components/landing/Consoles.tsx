@@ -1,6 +1,7 @@
 "use client";
 
 import { HoverExpand_001 } from "@/components/ui/skiper-ui/skiper52";
+import { RevealText } from "./MotionKit";
 
 const CONSOLES = [
   { src: "/consoles/ps2.svg", alt: "PlayStation 2", code: "PlayStation 2 con PCSX2" },
@@ -13,7 +14,7 @@ export function Consoles() {
   return (
     <section id="consolas" className="mx-auto grid max-w-6xl items-center gap-12 px-5 py-24 md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
       <div>
-        <h2 className="font-display text-[clamp(2rem,4.5vw,3.6rem)] font-extrabold tracking-[-0.02em]">Tres consolas, toda su biblioteca</h2>
+        <RevealText as="h2" text="Tres consolas, toda su biblioteca" className="font-display text-[clamp(2rem,4.5vw,3.6rem)] font-extrabold tracking-[-0.02em]" />
         <p className="mt-4 text-lg text-mist">
           PS2 con PCSX2, GameCube y Wii con Dolphin, acelerados por la GPU de tus servidores. Copias las ROMs en la
           librería del nodo y los juegos aparecen solos en el catálogo.

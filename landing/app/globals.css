@@ -163,3 +163,8 @@ html { scroll-behavior: auto; }
   .Carousal_001 .swiper-slide { height: 210px !important; }
 }
 html, body { overflow-x: clip; }
+
+/* Intro: si el JS no llega, se quita sola; con "reducir movimiento" no se ve */
+.intro-failsafe { animation: intro-failsafe 0.01s 3.2s forwards; }
+@keyframes intro-failsafe { to { visibility: hidden; opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .intro-failsafe { display: none; } }
