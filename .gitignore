@@ -13,3 +13,8 @@ clients/webos/build/
 tests/e2e/*.log
 tests/e2e/pad.log
 tests/e2e/player.png
+
+tests/e2e/*.png
+landing/out/
+landing/.next/
+landing/node_modules/

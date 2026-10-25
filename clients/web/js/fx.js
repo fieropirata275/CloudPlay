@@ -8,6 +8,10 @@
   try { reduced = root.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
   if (G && root.MorphSVGPlugin) { try { G.registerPlugin(root.MorphSVGPlugin); } catch (e) { G = null; } }
   else G = null;
+  // Plugins opcionales: si alguno no carga, solo se pierde ese efecto
+  var F = null, ST = null;
+  if (G && root.Flip) { try { G.registerPlugin(root.Flip); F = root.Flip; } catch (e) {} }
+  if (G && root.SplitText) { try { G.registerPlugin(root.SplitText); ST = root.SplitText; } catch (e) {} }
 
   // Siluetas genéricas en un viewBox de 200×200 (ninguna reproduce logos ni marcas)
   var SHAPES = {
@@ -103,6 +107,77 @@
       var t = e.target.closest && e.target.closest(selector);
       if (t) fx.animate(t, { scale: 1 }, fx.spring(500, 34));
     });
+  };
+
+  // ---------------------------------------------------------------- Flip
+  /** Guarda posiciones antes de re-renderizar (los elementos se emparejan por data-flip-id). */
+  fx.flipState = function (selector) {
+    if (!F || reduced) return null;
+    try { return F.getState(selector); } catch (e) { return null; }
+  };
+  /** Anima del estado guardado al layout nuevo: lo que se queda se desliza, lo nuevo entra y lo que sale se va. */
+  fx.flipFrom = function (state, selector) {
+    if (!state || !F) return;
+    try {
+      F.from(state, {
+        targets: selector,
+        duration: 0.55,
+        ease: 'expo.out',
+        absolute: true,
+        nested: true,
+        prune: true,
+        onEnter: function (els) { return G.fromTo(els, { opacity: 0, scale: 0.86 }, { opacity: 1, scale: 1, duration: 0.4, stagger: 0.02, ease: 'expo.out' }); },
+        onLeave: function (els) { return G.to(els, { opacity: 0, scale: 0.86, duration: 0.25 }); }
+      });
+    } catch (e) {}
+  };
+
+  /** Elemento compartido: una copia de `el` vuela desde su sitio hasta `to` (rect) y se desvanece. */
+  fx.flyTo = function (el, to, fromRect) {
+    if (!el || !G || reduced) return done();
+    var r = fromRect || el.getBoundingClientRect();
+    var ghost = el.cloneNode(true);
+    ghost.setAttribute('aria-hidden', 'true');
+    ghost.style.cssText = 'position:fixed;margin:0;z-index:60;pointer-events:none;left:' + r.left + 'px;top:' + r.top + 'px;width:' + r.width + 'px;height:' + r.height + 'px;padding-top:0';
+    document.body.appendChild(ghost);
+    return new Promise(function (resolve) {
+      G.timeline({ onComplete: function () { ghost.parentNode && ghost.parentNode.removeChild(ghost); resolve(); } })
+        .to(ghost, { left: to.left, top: to.top, width: to.width, height: to.height, borderRadius: 28, duration: 0.6, ease: 'expo.inOut' })
+        .to(ghost, { opacity: 0, scale: 0.7, duration: 0.3, ease: 'power2.in' }, '-=0.1');
+    });
+  };
+
+  // ----------------------------------------------------------- SplitText
+  /** Revela un titular letra a letra (o palabra a palabra). Idempotente: deshace el split anterior. */
+  fx.splitReveal = function (el, opts) {
+    opts = opts || {};
+    if (!el || !ST || reduced) return;
+    try {
+      if (el._split) el._split.revert();
+      var s = el._split = new ST(el, { type: opts.type || 'chars', charsClass: 'ch', wordsClass: 'wd' });
+      var parts = opts.type === 'words' ? s.words : s.chars;
+      G.fromTo(parts, { yPercent: 70, opacity: 0 }, {
+        yPercent: 0, opacity: 1, duration: opts.duration || 0.5, ease: 'expo.out',
+        stagger: opts.stagger || 0.02, delay: opts.delay || 0,
+        onComplete: function () { if (opts.revert !== false && el._split) { el._split.revert(); el._split = null; } }
+      });
+    } catch (e) {}
+  };
+
+  // ------------------------------------------- Motion hover/press (ratón y táctil)
+  /** Elevación al pasar el ratón y "hundido" al pulsar. En la tele no hay puntero: no se activa. */
+  fx.pointer = function (selector) {
+    if (!fx.hasMotion || !M.hover || !M.press) return;
+    try {
+      M.hover(selector, function (el) {
+        fx.animate(el, { y: -4 }, fx.spring(520, 30));
+        return function () { fx.animate(el, { y: 0 }, fx.spring(520, 34)); };
+      });
+      M.press(selector, function (el) {
+        fx.animate(el, { scale: 0.96 }, fx.spring(700, 30));
+        return function () { fx.animate(el, { scale: 1 }, fx.spring(500, 22)); };
+      });
+    } catch (e) {}
   };
 
   CP.fx = fx;

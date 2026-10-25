@@ -22,3 +22,25 @@
 		Referrer-Policy no-referrer
 	}
 }
+
+# Landing comercial (Next.js exportado a estático). Construir antes:
+#   cd landing && npm ci && NEXT_PUBLIC_SITE_URL=https://$LANDING_DOMAIN npm run build
+{$LANDING_DOMAIN:landing.localhost} {
+	encode zstd gzip
+	# El formulario de demo envía al mismo origen; solo este endpoint llega a la API
+	handle /api/leads {
+		reverse_proxy api:8000
+	}
+	handle {
+		root * /srv/landing
+		try_files {path} {path}.html {path}/index.html /index.html
+		file_server
+	}
+	@assets path /_next/static/* /media/* /screens/* /consoles/*
+	header @assets Cache-Control "public, max-age=31536000, immutable"
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+	}
+}

@@ -76,3 +76,15 @@ class Favorite(Base):
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     game_id: Mapped[str] = mapped_column(ForeignKey("games.id", ondelete="CASCADE"), primary_key=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class Lead(Base):
+    """Solicitud de demo enviada desde la landing comercial."""
+    __tablename__ = "leads"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    name: Mapped[str] = mapped_column(String(120))
+    email: Mapped[str] = mapped_column(String(255), index=True)
+    company: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    players: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

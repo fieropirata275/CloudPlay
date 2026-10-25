@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 
 from ..db import AsyncSession, get_db
 from ..dispatch import queue_positions
-from ..models import ACTIVE_STATES, PLACED_STATES, PLATFORMS, Game, Node, Session, User, now
+from ..models import ACTIVE_STATES, PLACED_STATES, PLATFORMS, Game, Lead, Node, Session, User, now
 from ..security import admin_user, hash_password, new_secret, sha256
 from .catalog import game_dict
 from .sessions import stop_session
@@ -192,3 +192,13 @@ async def stats(db: AsyncSession = Depends(get_db)):
         "failed_24h": day.get("failed", 0),
         "games": await db.scalar(select(func.count()).select_from(Game)),
     }
+
+
+@router.get("/leads")
+async def list_leads(db: AsyncSession = Depends(get_db)):
+    rows = (await db.scalars(select(Lead).order_by(Lead.created_at.desc()).limit(200))).all()
+    return [
+        {"id": l.id, "name": l.name, "email": l.email, "company": l.company, "players": l.players,
+         "message": l.message, "created_at": l.created_at.isoformat() if l.created_at else None}
+        for l in rows
+    ]

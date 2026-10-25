@@ -15,6 +15,7 @@ clientes ──WebRTC (H.264/Opus + input)──▶ nodos GPU (un contenedor por
 | `worker/session/` | Imagen de sesión: Xvfb + VirtualGL + PCSX2/Dolphin + streamer GStreamer (NVENC/VA-API/x264) + mando virtual uinput |
 | `clients/web/` | Cliente web/PWA, navegable con mando y con el mando de la tele |
 | `clients/tizen/`, `clients/webos/` | Empaquetado del cliente web para Samsung y LG |
+| `landing/` | Web comercial en Next.js + Skiper UI + Motion (estática, con formulario de demo conectado al panel) |
 | `clients/android/` | App nativa Kotlin (móvil + Android TV) con WebRTC nativo y controles táctiles |
 | `scripts/vendor.sh` | Regenera las librerías de animación servidas en local |
 | `docs/` | [Arquitectura](docs/ARCHITECTURE.md) · [Protocolos](docs/PROTOCOL.md) |
@@ -30,6 +31,10 @@ clientes ──WebRTC (H.264/Opus + input)──▶ nodos GPU (un contenedor por
 - **Panel NOC** en `/#/admin`: nodos con carga y último latido, partidas en curso y en cola,
   fallos de las últimas 24 h y cierre forzado de partidas.
 - **Login en la tele con código** aprobado desde el móvil, y salto de partida entre dispositivos.
+- **Más animación en el cliente** sin romper las teles: la cuadrícula se reordena con GSAP Flip al filtrar o buscar,
+  la carátula pulsada vuela hasta la pantalla de arranque, titulares letra a letra con SplitText y muelles de
+  Motion al pasar el ratón o pulsar.
+- **Web comercial** (`landing/`) con solicitudes de demo que llegan al panel del NOC.
 
 > ⚖️ Solo ROMs y BIOS volcadas de juegos y consolas que poseas. Ofrecer juegos comerciales a
 > terceros (clientes de pago incluidos) requiere licencias de los titulares de los derechos.
@@ -52,6 +57,14 @@ Alta de un nodo (guarda el token, no se vuelve a mostrar):
 ```bash
 docker compose exec api python -m app.cli create-node --name gpu-01 --capacity 4 --platforms ps2,gc,wii
 docker compose exec api python -m app.cli create-user --email jugador@ejemplo.com --password 'xxxxxxxx'
+```
+
+### Web comercial
+
+```bash
+cd landing && npm ci
+NEXT_PUBLIC_SITE_URL=https://$LANDING_DOMAIN npm run build
+docker compose up -d caddy      # sirve landing/out en LANDING_DOMAIN
 ```
 
 ## 2. Nodo worker (cada máquina con GPU)

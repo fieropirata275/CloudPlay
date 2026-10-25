@@ -7,7 +7,7 @@ OUT="$(cd "$(dirname "$0")/.." && pwd)/clients/web/vendor"
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 cd "$TMP" && npm init -y >/dev/null
 npm install -s "gsap@$GSAP" "motion@$MOTION" esbuild
-cp node_modules/gsap/dist/gsap.min.js node_modules/gsap/dist/MorphSVGPlugin.min.js "$OUT/"
+cp node_modules/gsap/dist/{gsap,MorphSVGPlugin,Flip,SplitText}.min.js "$OUT/"
 echo 'export { animate, stagger, spring, hover, press } from "motion";' > entry.js
 npx esbuild entry.js --bundle --minify --format=iife --global-name=Motion --target=chrome68 \
   --legal-comments=none --outfile="$OUT/motion.min.js"

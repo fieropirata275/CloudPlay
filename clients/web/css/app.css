@@ -151,6 +151,9 @@ label input { margin-top: 0.3rem; color: var(--glass); font-size: 1rem; }
 .empty { color: var(--mist); grid-column: 1 / -1; padding: 3rem 0; max-width: 32rem; }
 .empty strong { color: var(--glass); display: block; font-size: 1.1rem; margin-bottom: 0.3rem; }
 
+/* Letras y palabras de SplitText: inline-block para que yPercent tenga efecto */
+.ch, .wd { display: inline-block; }
+
 /* ------------------------------------------------------------------ panel */
 .admin { padding: 1.4rem 2rem 3rem; max-width: 72rem; }
 .admin h2 { margin-top: 2rem; }
@@ -163,6 +166,8 @@ label input { margin-top: 0.3rem; color: var(--glass); font-size: 1rem; }
 .table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
 .table th { text-align: left; color: var(--mist); font-weight: 400; padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--ink-3); }
 .table td { padding: 0.6rem; border-bottom: 1px solid var(--ink-2); vertical-align: middle; }
+.table .msg { max-width: 22rem; color: var(--mist); }
+.table a { color: var(--wii); }
 .table .num { font-variant-numeric: tabular-nums; }
 .load { display: inline-block; width: 7rem; height: 0.5rem; border-radius: 99px; background: var(--ink-3); overflow: hidden; vertical-align: middle; margin-right: 0.5rem; }
 .load i { display: block; height: 100%; background: var(--wii); border-radius: 99px; }

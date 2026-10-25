@@ -112,6 +112,7 @@
     $('#login-form').hidden = isTV;
     $('#login-toggle').hidden = !isTV;
     playMark($('#screen-login'));
+    fx.splitReveal($('#screen-login .wordmark'), { type: 'chars', stagger: 0.04, delay: 0.15, duration: 0.7 });
     startDeviceFlow();
   }
 
@@ -198,6 +199,7 @@
       // Un único momento orquestado: la biblioteca aparece en cascada la primera vez
       if (!state.introDone) {
         state.introDone = true;
+        $$('#screen-library .library h2').forEach(function (h, i) { fx.splitReveal(h, { type: 'chars', stagger: 0.018, delay: 0.05 + i * 0.12 }); });
         fx.animate($$('#screen-library .tile'), { opacity: [0, 1], y: [18, 0] }, { delay: fx.stagger(0.025, { startDelay: 0.05 }), duration: 0.4 });
       }
       setTimeout(CP.navFocusFirst, 60);
@@ -223,9 +225,9 @@
     return '<span class="case p-' + esc(g.platform) + '"><span class="spine">' + esc(g.platform_name) + '</span>' + art + '</span>';
   }
 
-  function tileHtml(g) {
+  function tileHtml(g, section) {
     var meta = g.play_count ? (g.play_count === 1 ? 'Jugado 1 vez' : 'Jugado ' + g.play_count + ' veces') : g.platform_name;
-    return '<button class="tile' + (g.favorite ? ' is-fav' : '') + (g.cover_url ? '' : ' no-cover') + '" data-focus data-id="' + esc(g.id) + '">' + caseHtml(g) +
+    return '<button class="tile' + (g.favorite ? ' is-fav' : '') + (g.cover_url ? '' : ' no-cover') + '" data-focus data-id="' + esc(g.id) + '" data-flip-id="' + esc((section || 'grid') + '-' + g.id) + '">' + caseHtml(g) +
       '<span class="fav" role="switch" aria-checked="' + (g.favorite ? 'true' : 'false') + '" aria-label="Favorito" data-fav>' +
       '<svg viewBox="0 0 100 100"><path d="' + (g.favorite ? fx.ICONS.star : fx.ICONS.plus) + '"/></svg></span>' +
       '<span class="tile-name">' + esc(g.title) + '</span><span class="tile-meta">' + esc(meta) + '</span></button>';
@@ -237,7 +239,9 @@
       (!q || g.title.toLowerCase().indexOf(q) >= 0);
   }
 
-  function drawAll() {
+  function drawAll(animate) {
+    // GSAP Flip: guardamos posiciones, re-renderizamos y animamos del layout viejo al nuevo
+    var flip = animate ? fx.flipState('#screen-library .tile') : null;
     var games = state.games.filter(visible);
     var recent = games.filter(function (g) { return g.last_played; })
       .sort(function (a, b) { return a.last_played < b.last_played ? 1 : -1; }).slice(0, 12);
@@ -251,12 +255,14 @@
       grid.innerHTML = '<p class="empty"><strong>Todavía no hay juegos.</strong>Copia tus ROMs en la librería de los nodos (carpetas ps2, gc y wii) y aparecerán aquí solas.</p>';
     } else if (!games.length) {
       grid.innerHTML = '<p class="empty"><strong>Nada coincide con «' + esc(state.query) + '».</strong>Prueba con otra palabra o cambia de plataforma.</p>';
-    } else grid.innerHTML = games.map(tileHtml).join('');
+    } else grid.innerHTML = games.map(function (g) { return tileHtml(g, 'grid'); }).join('');
+    fx.flipFrom(flip, '#screen-library .tile');
+    fx.pointer($$('#screen-library .tile'));
   }
   function drawRail(sel, list) {
     var rail = $(sel);
     rail.hidden = !list.length;
-    rail.querySelector('.rail-track').innerHTML = list.map(tileHtml).join('');
+    rail.querySelector('.rail-track').innerHTML = list.map(function (g) { return tileHtml(g, sel.slice(1)); }).join('');
   }
 
   // Selector de plataforma: la píldora se desliza con un muelle hasta el filtro activo
@@ -272,8 +278,7 @@
       state.filter = b.getAttribute('data-platform');
       $$('.filter').forEach(function (x) { x.classList.toggle('on', x === b); });
       movePill(true);
-      drawAll();
-      fx.animate($$('#grid .tile'), { opacity: [0, 1] }, { delay: fx.stagger(0.015), duration: 0.25 });
+      drawAll(true);
     });
   });
   root.addEventListener('resize', function () { movePill(false); });
@@ -281,7 +286,7 @@
   var searchTimer;
   $('#search').addEventListener('input', function (e) {
     clearTimeout(searchTimer);
-    searchTimer = setTimeout(function () { state.query = e.target.value.trim().toLowerCase(); drawAll(); }, 120);
+    searchTimer = setTimeout(function () { state.query = e.target.value.trim().toLowerCase(); drawAll(true); }, 160);
   });
 
   var lib = $('.library');
@@ -290,13 +295,14 @@
     var t = e.target.closest ? e.target.closest('.tile') : null;
     if (!t) return;
     if (favBtn) { e.stopPropagation(); toggleFav(t); return; }
-    startGame(t.getAttribute('data-id'));
+    startGame(t.getAttribute('data-id'), t);
   });
   lib.addEventListener('cp-secondary', function (e) {
     var t = e.target.closest ? e.target.closest('.tile') : null;
     if (t) toggleFav(t);
   });
   fx.focusSpring(lib, '.tile', 1.06);
+  fx.pointer($$('.btn, .filter'));
 
   /** Favorito: optimista, con el "+" transformándose en estrella (MorphSVG) y un pop con muelle. */
   function toggleFav(tile) {
@@ -323,10 +329,21 @@
 
   $('#logout').addEventListener('click', function () { CP.token(null); state.me = null; location.hash = '#/login'; route(); });
 
-  function startGame(gameId) {
+  /** Destino de la carátula voladora: la silueta real de la pantalla de arranque, ya visible. */
+  function bootTarget() {
+    var m = $('#boot .boot-mark').getBoundingClientRect();
+    var h = m.height * 0.9, w = h / 1.4;
+    return { left: m.left + m.width / 2 - w / 2, top: m.top + m.height / 2 - h / 2, width: w, height: h };
+  }
+
+  function startGame(gameId, tile) {
     CP.api('POST', '/api/sessions', { game_id: gameId }).then(function (s) {
       state.session = s;
+      // Elemento compartido: la carátula vuela hasta la silueta de la pantalla de arranque
+      var art = tile && tile.querySelector('.case');
+      var from = art && art.getBoundingClientRect();
       location.hash = '#/play/' + s.id;
+      if (art) setTimeout(function () { fx.flyTo(art, bootTarget(), from); }, 40);
     }).catch(function (e) {
       if (e.status === 409) {
         CP.api('GET', '/api/sessions').then(function (active) {
@@ -412,6 +429,7 @@
     $('#boot-shape').setAttribute('d', fx.SHAPES.cloud);
     $('#boot-detail').setAttribute('d', '');
     $('#boot-game').textContent = game ? game.title : '';
+    fx.splitReveal($('#boot-game'), { type: 'chars', stagger: 0.03, delay: 0.25, duration: 0.6 });
     $('#boot-msg').textContent = '';
     $('#boot-queue').hidden = true;
     $('[data-step="queue"]').hidden = true;

@@ -36,9 +36,10 @@
     return Promise.all([
       CP.api('GET', '/api/admin/stats'),
       CP.api('GET', '/api/admin/nodes'),
-      CP.api('GET', '/api/admin/sessions')
+      CP.api('GET', '/api/admin/sessions'),
+      CP.api('GET', '/api/admin/leads')
     ]).then(function (r) {
-      var st = r[0], nodes = r[1], sessions = r[2];
+      var st = r[0], nodes = r[1], sessions = r[2], leads = r[3];
       kpi('k-nodes', st.nodes_online, 'nodos en línea de ' + st.nodes_total, st.nodes_online < st.nodes_total ? 'warn' : '');
       kpi('k-cap', st.capacity_online - st.placed, 'huecos libres de ' + st.capacity_online, st.capacity_online && st.placed >= st.capacity_online ? 'warn' : '');
       kpi('k-play', st.placed, 'partidas en curso');
@@ -63,6 +64,12 @@
           '<td>' + esc(s.node || '—') + '</td><td>' + ago(s.started_at || s.created_at) + '</td>' +
           '<td><button class="btn quiet" data-kill="' + esc(s.id) + '">Cerrar</button></td></tr>';
       }).join('') : '<tr><td colspan="6" class="muted">Nadie jugando ahora mismo.</td></tr>';
+
+      document.querySelector('#leads-table tbody').innerHTML = leads.length ? leads.map(function (l) {
+        return '<tr><td>' + esc(l.name) + '</td><td><a href="mailto:' + esc(l.email) + '">' + esc(l.email) + '</a></td>' +
+          '<td>' + esc(l.company || '—') + '</td><td>' + esc(l.players || '—') + '</td>' +
+          '<td class="msg">' + esc(l.message || '') + '</td><td>' + ago(l.created_at) + '</td></tr>';
+      }).join('') : '<tr><td colspan="6" class="muted">Aún no hay solicitudes desde la web.</td></tr>';
 
       document.getElementById('admin-updated').textContent = 'Actualizado ' + new Date().toLocaleTimeString('es-ES');
     }).catch(function (e) { CP.toast(e.message); });

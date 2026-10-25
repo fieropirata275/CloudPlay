@@ -12,7 +12,7 @@ from .db import SessionLocal, engine, is_postgres
 from .models import Base, User
 from .dispatch import dispatcher_loop
 from .reaper import reaper_loop
-from .routes import admin, auth, catalog, sessions
+from .routes import admin, auth, catalog, leads, sessions
 from .security import hash_password
 from .ws import router as ws_router
 
@@ -50,7 +50,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-for r in (auth.router, catalog.router, sessions.router, admin.router, ws_router):
+for r in (auth.router, catalog.router, sessions.router, admin.router, leads.router, ws_router):
     app.include_router(r)
 
 

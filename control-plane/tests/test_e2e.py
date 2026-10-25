@@ -174,3 +174,18 @@ def test_turn_credentials():
     exp = hmac.new(settings.turn_secret.encode(), turn["username"].encode(), hashlib.sha1).digest()
     assert base64.b64decode(turn["credential"]) == exp
     assert int(turn["username"].split(":")[0]) > time.time()
+
+
+def test_leads(client):
+    ok = client.post("/api/leads", json={"name": "Laura", "email": "laura@cliente.es", "company": "Bar Retro", "players": "10-50"})
+    assert ok.status_code == 201, ok.text
+    assert client.post("/api/leads", json={"name": "Bot", "email": "x@y.zz", "website": "spam"}).status_code == 201  # honeypot
+    assert client.post("/api/leads", json={"name": "Mal", "email": "no-es-email"}).status_code == 422
+    for _ in range(4):
+        client.post("/api/leads", json={"name": "Otra", "email": "o@cliente.es"})
+    assert client.post("/api/leads", json={"name": "Otra", "email": "o@cliente.es"}).status_code == 429
+    tok = client.post("/api/auth/login", json={"email": "admin@test.local", "password": "supersecret"}).json()["access_token"]
+    rows = client.get("/api/admin/leads", headers={"Authorization": f"Bearer {tok}"}).json()
+    assert rows[-1]["email"] == "laura@cliente.es" and rows[-1]["company"] == "Bar Retro"
+    assert not any(r["name"] == "Bot" for r in rows)
+    assert client.get("/api/admin/leads").status_code == 401
