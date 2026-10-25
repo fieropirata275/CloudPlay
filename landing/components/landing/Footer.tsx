@@ -1,3 +1,4 @@
+import { Link000, Link001 } from "@/components/ui/skiper-ui/skiper40";
 import { Mark } from "./Mark";
 
 export function Footer() {
@@ -7,11 +8,15 @@ export function Footer() {
         <Mark className="size-6" /> CloudPlay
       </span>
       <span>Solo juegos y BIOS de los que tengas copia legal.</span>
-      <span className="md:ml-auto">
-        Componentes animados de{" "}
-        <a href="https://skiper-ui.com" className="underline decoration-ink-3 underline-offset-4 hover:text-glass" target="_blank" rel="noopener noreferrer">
+      {/* Skiper40: subrayado que entra por un lado y sale por el otro */}
+      <Link000 href="#demo" className="hover:text-glass">
+        Pedir una demo
+      </Link000>
+      <span className="flex items-center gap-1 md:ml-auto">
+        Componentes animados de
+        <Link001 href="https://skiper-ui.com" className="text-glass">
           Skiper UI
-        </a>
+        </Link001>
       </span>
     </footer>
   );

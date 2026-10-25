@@ -1,8 +1,12 @@
 "use client";
 
-import { AnimatePresence, motion, useSpring } from "framer-motion";
+import { AnimatePresence, motion, useScroll, useSpring, useTransform } from "framer-motion";
 import { Play, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
+import { useEffect, useRef, useState } from "react";
+
+import { useLoop } from "@/components/ui/skiper-ui/skiper62";
+import { Magnetic } from "./MotionKit";
 
 import {
   VideoPlayer,
@@ -15,6 +19,11 @@ import {
 
 const SPOT = "/media/cloudplay-spot.mp4";
 const POSTER = "/media/spot-poster.jpg";
+// three.js solo en el cliente y en un chunk aparte: no bloquea el primer pintado
+const HeroScene = dynamic(() => import("./HeroScene").then((m) => m.HeroScene), { ssr: false });
+const SHAPE_LABELS = ["Tu nube", "PlayStation 2", "GameCube", "Wii"];
+const SCREENS = ["la tele del salón", "el móvil", "el navegador", "la Android TV", "la tele del hotel"];
+
 const WORDS = ["Tus", "clásicos", "de", "PS2,", "GameCube", "y", "Wii", "en", "cualquier", "pantalla."];
 
 /** Skiper67: el "Reproducir" sigue al cursor y abre el vídeo en un modal que se despliega con clip-path. */
@@ -101,10 +110,61 @@ function Showreel() {
   );
 }
 
-export function Hero() {
+/** Skiper62 (useLoop): la pantalla de destino va cambiando sola. */
+function RotatingScreen() {
+  const { key } = useLoop(1900);
+  const word = SCREENS[key % SCREENS.length];
   return (
-    <section id="inicio" className="relative mx-auto max-w-6xl px-5 pb-24 pt-36 md:pt-44">
-      <h1 className="max-w-4xl font-display text-[clamp(2.4rem,6.2vw,5.2rem)] font-extrabold leading-[1.02] tracking-[-0.02em]">
+    <span className="relative inline-flex overflow-hidden align-bottom">
+      <AnimatePresence mode="popLayout" initial={false}>
+        <motion.span
+          key={key}
+          initial={{ opacity: 0, y: "100%", filter: "blur(4px)" }}
+          animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+          exit={{ opacity: 0, y: "-100%", filter: "blur(4px)" }}
+          transition={{ type: "spring", stiffness: 260, damping: 26 }}
+          className="whitespace-nowrap font-bold text-led"
+        >
+          {word}
+        </motion.span>
+      </AnimatePresence>
+    </span>
+  );
+}
+
+export function Hero() {
+  const ref = useRef<HTMLElement>(null);
+  const [shape, setShape] = useState(0);
+  const { scrollYProgress } = useScroll({ target: ref, offset: ["start start", "end start"] });
+  // La escena 3D se aleja y se apaga al bajar
+  const sceneOpacity = useTransform(scrollYProgress, [0, 0.55], [1, 0]);
+  const sceneY = useTransform(scrollYProgress, [0, 1], [0, 220]);
+  const sceneScale = useTransform(scrollYProgress, [0, 0.6], [1, 0.82]);
+
+  return (
+    <section ref={ref} id="inicio" className="relative mx-auto max-w-6xl px-5 pb-24 pt-36 md:pt-44">
+      <motion.div
+        style={{ opacity: sceneOpacity, y: sceneY, scale: sceneScale }}
+        className="pointer-events-none absolute -right-24 top-10 z-0 h-[520px] w-[115%] opacity-60 sm:right-[-8%] md:top-6 md:h-[700px] md:w-[62%]"
+      >
+        <HeroScene onShape={setShape} className="h-full w-full max-md:opacity-50" />
+        <div className="absolute bottom-24 right-[18%] hidden items-center gap-2 rounded-full border border-ink-3 bg-ink/70 px-3 py-1.5 text-xs text-mist backdrop-blur md:flex">
+          <span className="size-1.5 animate-pulse rounded-full bg-led" />
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.span
+              key={shape}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.25 }}
+            >
+              {SHAPE_LABELS[shape]}
+            </motion.span>
+          </AnimatePresence>
+        </div>
+      </motion.div>
+
+      <h1 className="relative z-10 max-w-4xl font-display text-[clamp(2.4rem,6.2vw,5.2rem)] font-extrabold leading-[1.02] tracking-[-0.02em]">
         {WORDS.map((w, i) => (
           <motion.span
             key={i}
@@ -118,29 +178,33 @@ export function Hero() {
         ))}
       </h1>
       <motion.p
-        className="mt-6 max-w-xl text-lg text-mist md:text-xl"
+        className="relative z-10 mt-6 max-w-xl text-lg text-mist md:text-xl"
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.75, duration: 0.5 }}
       >
-        Emulación en la nube sobre tus propios servidores: tus clientes juegan en la tele, el móvil o el navegador
-        sin consola, sin descargas y con la partida guardada.
+        Emulación en la nube sobre tus propios servidores. Tus clientes juegan en <RotatingScreen /> sin consola, sin
+        descargas y con la partida guardada.
       </motion.p>
       <motion.div
-        className="mt-9 flex flex-wrap items-center gap-3"
+        className="relative z-10 mt-9 flex flex-wrap items-center gap-3"
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.9, duration: 0.5 }}
       >
-        <a href="#demo" className="rounded-full bg-led px-6 py-3 font-bold text-ink transition hover:brightness-110">
-          Pedir una demo
-        </a>
-        <a href="#como-funciona" className="rounded-full px-6 py-3 font-bold text-glass ring-1 ring-ink-3 transition hover:bg-ink-2">
-          Cómo funciona
-        </a>
+        <Magnetic>
+          <a href="#demo" className="block rounded-full bg-led px-6 py-3 font-bold text-ink transition hover:brightness-110">
+            Pedir una demo
+          </a>
+        </Magnetic>
+        <Magnetic strength={0.25}>
+          <a href="#como-funciona" className="block rounded-full bg-ink/60 px-6 py-3 font-bold text-glass ring-1 ring-ink-3 backdrop-blur transition hover:bg-ink-2">
+            Cómo funciona
+          </a>
+        </Magnetic>
       </motion.div>
       <motion.div
-        className="mt-16"
+        className="relative z-10 mt-16"
         initial={{ opacity: 0, y: 40, scale: 0.97 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ delay: 1, type: "spring", stiffness: 120, damping: 20 }}

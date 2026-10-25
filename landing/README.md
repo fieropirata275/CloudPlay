@@ -27,5 +27,16 @@ Instalados con `npx shadcn add @skiper-ui/<nombre>` en `components/ui/skiper-ui/
 | skiper47 `Carousel_001` | Carrusel de capturas reales | Estilos en `globals.css` |
 | skiper52 `HoverExpand_001` | Las tres consolas (en escritorio; en móvil, rejilla) | — |
 | skiper37 (inspiración) | Cifras con NumberFlow al entrar en pantalla | Componente propio `Stats.tsx` |
+| skiper19 `LinePath` | Trazo ámbar que se dibuja con el scroll en "Cómo funciona" | Exportado con props de color, grosor y tramo inicial |
+| skiper28 `PerspectiveTextScroll` | "Mientras juegas, CloudPlay…" avanza en perspectiva | Contenido por props, sin Lenis propio |
+| skiper30 `ParallaxGallery` | Galería de capturas en 4 columnas a distinta velocidad | Imágenes por props, sin Lenis propio |
+| skiper40 `Link000` / `Link001` | Enlaces del pie con subrayado animado | `rel="noopener noreferrer"` en el externo |
+| skiper61 `SpringMouseFollow` | Punto ámbar que sigue al ratón y crece sobre enlaces | Ventana completa; solo con ratón |
+| skiper62 `useLoop` | La pantalla de destino rota en el texto del hero | — |
+
+## Otras animaciones
+
+- **three.js** (`HeroScene.tsx`): nube de 6.500 partículas que se transforma en siluetas genéricas (torre, cubo, placa) con el morph en el shader. Se carga en un chunk aparte, se pausa fuera de pantalla y con "reducir movimiento" queda quieta.
+- **Motion** (`MotionKit.tsx`): barra de progreso de scroll, botones magnéticos, cinta de pantallas que acelera con la velocidad del scroll y captura del panel con inclinación 3D.
 
 La versión gratuita de Skiper UI pide **atribución**: está en el pie de la página.

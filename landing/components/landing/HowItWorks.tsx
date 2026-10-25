@@ -4,6 +4,7 @@ import { useScroll } from "framer-motion";
 import { useRef } from "react";
 
 import { StickyCard_001 } from "@/components/ui/skiper-ui/skiper16";
+import { LinePath } from "@/components/ui/skiper-ui/skiper19";
 
 const STEPS = [
   { n: 1, title: "Elige el juego", text: "La biblioteca aparece sola con los juegos de tus servidores. Favoritos y jugados hace poco, a un botón.", img: "/screens/tv_library.webp" },
@@ -17,12 +18,20 @@ export function HowItWorks() {
   const container = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({ target: container, offset: ["start start", "end end"] });
   return (
-    <section id="como-funciona" className="relative">
-      <div className="mx-auto max-w-6xl px-5 pt-24">
+    <section id="como-funciona" className="relative overflow-clip">
+      {/* Skiper19: la "señal" se dibuja a medida que bajas por los pasos */}
+      <LinePath
+        scrollYProgress={scrollYProgress}
+        from={0.05}
+        stroke="#FFB000"
+        strokeWidth={14}
+        className="pointer-events-none absolute -right-[30%] top-24 z-0 h-auto w-[115%] opacity-40 md:-right-[12%] md:w-[80%]"
+      />
+      <div className="relative z-10 mx-auto max-w-6xl px-5 pt-24">
         <h2 className="font-display text-[clamp(2rem,4.5vw,3.6rem)] font-extrabold tracking-[-0.02em]">Cómo funciona</h2>
         <p className="mt-3 max-w-lg text-lg text-mist">Cuatro pasos desde el sofá hasta la partida.</p>
       </div>
-      <div ref={container} className="relative pb-[40vh] pt-[10vh]">
+      <div ref={container} className="relative z-10 pb-[40vh] pt-[10vh]">
         {STEPS.map((s, i) => (
           <StickyCard_001
             key={s.n}

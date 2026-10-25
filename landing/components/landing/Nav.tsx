@@ -3,6 +3,7 @@
 import { ProgressiveBlur } from "@/components/ui/skiper-ui/skiper41";
 import { TextRoll } from "@/components/ui/skiper-ui/skiper58";
 import { Mark } from "./Mark";
+import { Magnetic, ScrollProgress } from "./MotionKit";
 
 const LINKS = [
   { href: "#como-funciona", label: "Cómo funciona" },
@@ -13,6 +14,7 @@ const LINKS = [
 export function Nav() {
   return (
     <header className="fixed inset-x-0 top-0 z-50">
+      <ScrollProgress />
       {/* Skiper41: desenfoque progresivo bajo la barra */}
       <ProgressiveBlur position="top" height="120px" backgroundColor="#10123A" blurAmount="6px" />
       <nav className="relative mx-auto flex max-w-6xl items-center gap-8 px-5 py-4" aria-label="Principal">
@@ -31,12 +33,11 @@ export function Nav() {
             </li>
           ))}
         </ul>
-        <a
-          href="#demo"
-          className="ml-auto rounded-full bg-glass px-4 py-2 text-sm font-bold text-ink transition hover:bg-white md:ml-0"
-        >
-          Pedir una demo
-        </a>
+        <Magnetic className="ml-auto md:ml-0" strength={0.3}>
+          <a href="#demo" className="block rounded-full bg-glass px-4 py-2 text-sm font-bold text-ink transition hover:bg-white">
+            Pedir una demo
+          </a>
+        </Magnetic>
       </nav>
     </header>
   );
