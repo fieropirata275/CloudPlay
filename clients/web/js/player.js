@@ -31,7 +31,13 @@
     });
   }
 
+  Player.prototype._stage = function (name, data) {
+    if (this.o.onStage) this.o.onStage(name, data || {});
+  };
+
   Player.prototype.start = function () {
+    var st = this.session.status;
+    this._stage(st === 'queued' ? 'queue' : 'booting', { position: this.session.queue_position });
     this._connectSignal(0);
     var self = this;
     this._statsTimer = setInterval(function () { self._pollStats(); }, 2000);
@@ -43,6 +49,7 @@
     var self = this;
     var url = this.session.signal_url + '?role=client&token=' + encodeURIComponent(CP.token());
     this.o.onStatus(attempt ? 'Reconectando…' : 'Arrancando la consola en la nube…', 'loading');
+    if (attempt) this._stage('reconnecting');
     var ws = this.ws = new WebSocket(url);
     ws.onmessage = function (ev) {
       var m;
@@ -65,9 +72,13 @@
     var self = this;
     switch (m.type) {
       case 'peer-joined':
-        if (m.role === 'worker') this.o.onStatus('Conectando con el nodo…', 'loading');
+        if (m.role === 'worker') { this.o.onStatus('Conectando con el nodo…', 'loading'); this._stage('linking'); }
+        break;
+      case 'queue':
+        this._stage('queue', { position: m.position });
         break;
       case 'offer':
+        this._stage('linking');
         this._newPeer();
         this.pc.setRemoteDescription({ type: 'offer', sdp: m.sdp })
           .then(function () {
@@ -88,7 +99,8 @@
         if (m.role === 'worker') this.o.onStatus('El nodo se ha desconectado, esperando…', 'loading');
         break;
       case 'session-state':
-        if (m.status === 'failed') this.o.onEnd(m.error || 'La sesión ha fallado');
+        if (m.status === 'starting') this._stage('booting');
+        else if (m.status === 'failed') this.o.onEnd(m.error || 'La sesión ha fallado');
         else if (m.status === 'ended') this.o.onEnd('Sesión terminada');
         break;
       case 'bye':
@@ -123,9 +135,9 @@
     };
     pc.onconnectionstatechange = function () {
       var s = pc.connectionState;
-      if (s === 'connected') { self.o.onStatus('', 'ok'); self.input.start(); }
-      else if (s === 'failed') self.o.onStatus('No se pudo conectar (firewall/TURN)', 'error');
-      else if (s === 'disconnected') self.o.onStatus('Conexión inestable…', 'loading');
+      if (s === 'connected') { self.o.onStatus('', 'ok'); self.input.start(); self._stage('live'); }
+      else if (s === 'failed') { self.o.onStatus('No se pudo conectar (firewall/TURN)', 'error'); self._stage('error', { text: 'No se pudo conectar con el nodo. Revisa el firewall o el TURN.' }); }
+      else if (s === 'disconnected') { self.o.onStatus('Conexión inestable…', 'loading'); self._stage('reconnecting'); }
     };
     pc.ondatachannel = function (ev) {
       var ch = ev.channel;

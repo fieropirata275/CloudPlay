@@ -50,7 +50,7 @@ sequenceDiagram
   participant AG as Agente
   participant S as Sesión (contenedor)
   C->>API: POST /api/sessions {game_id}
-  API->>API: scheduler: nodo online con menos carga<br/>(lock advisory en Postgres)
+  API->>API: scheduler: nodo online con menos carga<br/>(lock advisory en Postgres)<br/>si no hay hueco: cola FIFO + dispatcher cada 2 s
   API-->>AG: start (vía Redis node:{id})
   API-->>C: {signal_url, ice_servers}
   AG->>AG: baja partidas de MinIO
@@ -99,6 +99,15 @@ muestra un código y lo apruebas desde el móvil en `/#/link`.
 **Pipeline nuevo por cada cliente.** El emulador sigue corriendo; reconectar o cambiar de dispositivo
 solo reconstruye el pipeline de GStreamer y renegocia.
 
+**Cola en lugar de "vuelve más tarde".** Si no hay hueco, la partida espera en una cola FIFO por
+plataforma; un dispatcher (una sola réplica a la vez, lock en Redis) la coloca en cuanto un nodo
+queda libre y avisa al cliente de su posición por la señalización.
+
+**Animación con fallback.** El cliente web usa Motion (motion.dev) para la UI y GSAP + MorphSVG para
+las siluetas de la pantalla de arranque. Ambas se sirven en local (las apps de TV no dependen de un
+CDN), Motion se compila a Chrome 68 y, si alguna no carga o el usuario pide menos movimiento, la
+interfaz funciona igual sin animar.
+
 ## Seguridad
 
 - Contenedores de sesión: `cap_drop: ALL` + solo `CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID, MKNOD`,
@@ -114,5 +123,4 @@ solo reconstruye el pipeline de GStreamer y renegocia.
   con mknod. El riesgo práctico es bajo (solo corre el emulador, sin root), pero si necesitas
   aislamiento duro, sustituye uinput por un interposer `LD_PRELOAD` de joystick como hace Selkies.
 - `network_mode: host` comparte la red del nodo con las sesiones: dedica las máquinas worker solo a esto.
-- Sin cola de espera: si no hay hueco, la API devuelve 503.
 - Esquema de BD con `create_all` (sin migraciones). Antes de producción, mete Alembic.

@@ -16,7 +16,11 @@ PIDS=()
 cleanup() { for p in "${PIDS[@]}"; do kill "$p" 2>/dev/null || true; done; pkill -f "ximagesink display=:99" 2>/dev/null || true; }
 trap cleanup EXIT
 
-if [ ! -S /tmp/.X11-unix/X99 ]; then Xvfb :99 -screen 0 1280x720x24 -nolisten tcp & PIDS+=($!); sleep 1; fi
+# Comprueba que el display responde (un socket huérfano no basta)
+if ! DISPLAY=:99 xdotool getdisplaygeometry >/dev/null 2>&1; then
+  rm -f /tmp/.X11-unix/X99 /tmp/.X99-lock
+  Xvfb :99 -screen 0 1280x720x24 -nolisten tcp & PIDS+=($!); sleep 1
+fi
 
 if curl -sf "localhost:$PORT/api/health" >/dev/null 2>&1; then echo "El puerto $PORT ya está en uso"; exit 1; fi
 cd "$HERE/../../control-plane"

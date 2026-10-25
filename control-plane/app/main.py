@@ -10,6 +10,7 @@ from . import bus
 from .config import settings
 from .db import SessionLocal, engine, is_postgres
 from .models import Base, User
+from .dispatch import dispatcher_loop
 from .reaper import reaper_loop
 from .routes import admin, auth, catalog, sessions
 from .security import hash_password
@@ -35,9 +36,10 @@ async def init_db() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await init_db()
-    task = asyncio.create_task(reaper_loop())
+    tasks = [asyncio.create_task(reaper_loop()), asyncio.create_task(dispatcher_loop())]
     yield
-    task.cancel()
+    for t in tasks:
+        t.cancel()
     await bus.close()
 
 

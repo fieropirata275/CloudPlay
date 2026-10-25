@@ -16,8 +16,20 @@ clientes ──WebRTC (H.264/Opus + input)──▶ nodos GPU (un contenedor por
 | `clients/web/` | Cliente web/PWA, navegable con mando y con el mando de la tele |
 | `clients/tizen/`, `clients/webos/` | Empaquetado del cliente web para Samsung y LG |
 | `clients/android/` | App nativa Kotlin (móvil + Android TV) con WebRTC nativo y controles táctiles |
+| `scripts/vendor.sh` | Regenera las librerías de animación servidas en local |
 | `docs/` | [Arquitectura](docs/ARCHITECTURE.md) · [Protocolos](docs/PROTOCOL.md) |
 | `tests/e2e/` | Prueba de extremo a extremo con Chromium headless, sin GPU ni Docker |
+
+### Qué ofrece
+
+- **Cola de espera** con posición en vivo cuando todos los nodos están llenos (FIFO por plataforma).
+- **Favoritos** y **jugados hace poco**, búsqueda y filtro por plataforma.
+- **Pantalla de arranque animada**: la nube se transforma (GSAP MorphSVG) en la silueta de la consola
+  mientras avanza *cola → encendiendo → conectando → a jugar*. Interfaz con Motion (motion.dev):
+  muelles al navegar con mando, transiciones de menú y avisos. Respeta "reducir movimiento".
+- **Panel NOC** en `/#/admin`: nodos con carga y último latido, partidas en curso y en cola,
+  fallos de las últimas 24 h y cierre forzado de partidas.
+- **Login en la tele con código** aprobado desde el móvil, y salto de partida entre dispositivos.
 
 > ⚖️ Solo ROMs y BIOS volcadas de juegos y consolas que poseas. Ofrecer juegos comerciales a
 > terceros (clientes de pago incluidos) requiere licencias de los titulares de los derechos.
@@ -80,6 +92,8 @@ las Quadro/RTX Ax000 no. Dolphin depende mucho del rendimiento por núcleo.
 
 ## 3. Clientes
 
+- **Favoritos**: Y en el mando, F en el teclado, botón amarillo de la tele o la estrella de la carátula
+  (en Android: pulsación larga o Y).
 - **Web**: `https://TU_DOMINIO` (instalable como PWA). Teclado: flechas, X=A, Z=B, S=X, A=Y, Q/W=LB/RB, 1/2=LT/RT, Enter=Start, Shift=Select, Esc=menú.
 - **Tele (Tizen/webOS)**: la app muestra un código → en el móvil entra en `https://TU_DOMINIO/#/link`.
   ```bash
@@ -119,10 +133,12 @@ Qué está verificado y qué no: ver [la sección de verificación](#verificaci�
 
 Probado en este repo:
 - Control plane: tests de extremo a extremo (login, device code, alta de nodo, autocatálogo,
-  scheduler y capacidad, relay de señalización, fin de sesión, credenciales TURN).
+  scheduler y capacidad, cola y salida de cola, favoritos y recientes, panel admin, relay de
+  señalización, fin de sesión, credenciales TURN).
 - Streamer: loopback WebRTC real con GStreamer (offer, ICE, vídeo H.264 decodificado, canales de datos).
-- E2E en Chromium: el cliente web juega contra `session.py` real: vídeo 1280×720 a 60 fps, input
-  del teclado llegando al worker, menú, guardar estado y cierre de sesión.
+- E2E en Chromium: el cliente web juega contra `session.py` real: fases de arranque, vídeo
+  1280×720 a 60 fps, input del teclado llegando al worker, menú, guardar estado, cierre de sesión y
+  la partida apareciendo en "jugados hace poco".
 - Protocolo de input idéntico byte a byte en JS, Kotlin y Python.
 - APK de Android compila y pasa los tests unitarios.
 

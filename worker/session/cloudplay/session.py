@@ -92,6 +92,10 @@ class Session:
                 log.info("el emulador terminó con código %s", code)
                 self.exit_code = 0 if code in (0, -signal.SIGTERM) else 1
                 self.streamer.notify({"t": "bye", "reason": "emulator-exit"})
+                # También por señalización: si el WebRTC aún no estaba conectado, el
+                # canal de datos no existe y el cliente se quedaría esperando.
+                self.outbox.put_nowait({"type": "bye", "reason": "emulator-exit"})
+                await asyncio.sleep(0.5)  # deja salir el mensaje antes de cerrar
                 self.stopping.set()
                 return
             await asyncio.sleep(1)

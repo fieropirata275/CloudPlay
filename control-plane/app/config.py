@@ -26,6 +26,8 @@ class Settings(BaseSettings):
 
     node_heartbeat_timeout: int = 30
     session_start_timeout: int = 120
+    queue_max_wait: int = 900
+    queue_max_length: int = 200
 
     @property
     def ws_base(self) -> str:

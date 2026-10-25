@@ -29,7 +29,7 @@ async def reap_once() -> None:
         for s in active:
             if s.node_id in dead_ids:
                 s.status, s.error, s.ended_at = "failed", "Nodo caído", t
-            elif s.status in ("starting", "pending", "ending") and s.created_at and _aware(s.created_at) < start_cutoff:
+            elif s.status in ("starting", "pending", "ending") and _aware(s.dispatched_at or s.created_at) < start_cutoff:
                 if s.status != "ending":
                     s.error = "Timeout arrancando la sesión"
                 s.status = "failed" if s.status != "ending" else "ended"

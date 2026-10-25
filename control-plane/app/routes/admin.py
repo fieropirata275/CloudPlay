@@ -1,11 +1,15 @@
+from datetime import timedelta
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from ..db import AsyncSession, get_db
-from ..models import ACTIVE_STATES, PLATFORMS, Game, Node, Session, User
+from ..dispatch import queue_positions
+from ..models import ACTIVE_STATES, PLACED_STATES, PLATFORMS, Game, Node, Session, User, now
 from ..security import admin_user, hash_password, new_secret, sha256
 from .catalog import game_dict
+from .sessions import stop_session
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(admin_user)])
 
@@ -66,7 +70,7 @@ async def list_nodes(db: AsyncSession = Depends(get_db)):
     out = []
     for n in nodes:
         active = (
-            await db.scalars(select(Session.id).where(Session.node_id == n.id, Session.status.in_(ACTIVE_STATES)))
+            await db.scalars(select(Session.id).where(Session.node_id == n.id, Session.status.in_(PLACED_STATES)))
         ).all()
         out.append(
             {
@@ -131,10 +135,60 @@ async def add_user(body: UserIn, db: AsyncSession = Depends(get_db)):
     return {"id": u.id, "email": u.email}
 
 
+@router.get("/users")
+async def list_users(db: AsyncSession = Depends(get_db)):
+    users = (await db.scalars(select(User).order_by(User.email))).all()
+    return [{"id": u.id, "email": u.email, "is_admin": u.is_admin, "max_sessions": u.max_sessions} for u in users]
+
+
 @router.get("/sessions")
 async def active_sessions(db: AsyncSession = Depends(get_db)):
-    rows = (await db.scalars(select(Session).where(Session.status.in_(ACTIVE_STATES)))).all()
+    rows = await db.execute(
+        select(Session, User.email, Game.title, Game.platform, Node.name)
+        .join(User, User.id == Session.user_id)
+        .join(Game, Game.id == Session.game_id)
+        .outerjoin(Node, Node.id == Session.node_id)
+        .where(Session.status.in_(ACTIVE_STATES))
+        .order_by(Session.created_at)
+    )
+    positions = await queue_positions(db)
     return [
-        {"id": s.id, "user_id": s.user_id, "game_id": s.game_id, "node_id": s.node_id, "status": s.status}
-        for s in rows
+        {
+            "id": s.id, "status": s.status, "user": email, "game": title, "platform": platform, "node": node_name,
+            "created_at": s.created_at.isoformat() if s.created_at else None,
+            "started_at": s.started_at.isoformat() if s.started_at else None,
+            "queue_position": positions.get(s.id),
+        }
+        for s, email, title, platform, node_name in rows.all()
     ]
+
+
+@router.delete("/sessions/{sid}")
+async def kill_session(sid: str, db: AsyncSession = Depends(get_db)):
+    s = await db.get(Session, sid)
+    if s is None:
+        raise HTTPException(404)
+    return await stop_session(db, s)
+
+
+@router.get("/stats")
+async def stats(db: AsyncSession = Depends(get_db)):
+    nodes = (await db.scalars(select(Node))).all()
+    online = [n for n in nodes if n.status == "online"]
+    by_status = dict(
+        (await db.execute(select(Session.status, func.count()).where(Session.status.in_(ACTIVE_STATES)).group_by(Session.status))).all()
+    )
+    since = now() - timedelta(hours=24)
+    day = dict(
+        (await db.execute(select(Session.status, func.count()).where(Session.created_at >= since).group_by(Session.status))).all()
+    )
+    return {
+        "nodes_total": len(nodes),
+        "nodes_online": len(online),
+        "capacity_online": sum(n.capacity for n in online),
+        "placed": sum(by_status.get(k, 0) for k in PLACED_STATES),
+        "queued": by_status.get("queued", 0),
+        "sessions_24h": sum(day.values()),
+        "failed_24h": day.get("failed", 0),
+        "games": await db.scalar(select(func.count()).select_from(Game)),
+    }

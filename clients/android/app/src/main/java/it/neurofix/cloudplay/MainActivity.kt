@@ -209,7 +209,7 @@ class MainActivity : AppCompatActivity() {
         val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         top.addView(logo(22f))
         val filters = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(16), 0, 0, 0) }
-        listOf("all" to "Todo", "ps2" to "PS2", "gc" to "GameCube", "wii" to "Wii").forEach { (id, label) ->
+        listOf("all" to "Todo", "fav" to "Favoritos", "ps2" to "PS2", "gc" to "GameCube", "wii" to "Wii").forEach { (id, label) ->
             filters.addView(button(label) { filter = id; applyFilter() }, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(6) })
         }
@@ -228,7 +228,7 @@ class MainActivity : AppCompatActivity() {
         val grid = RecyclerView(this)
         val span = (resources.displayMetrics.widthPixels / dp(if (isTv) 200 else 150)).coerceAtLeast(2)
         grid.layoutManager = GridLayoutManager(this, span)
-        adapter = GamesAdapter(dp(if (isTv) 260 else 200)) { startGame(it) }
+        adapter = GamesAdapter(dp(if (isTv) 260 else 200), { startGame(it) }, { toggleFavorite(it) })
         grid.adapter = adapter
         grid.clipToPadding = false
         grid.setPadding(0, dp(12), 0, dp(24))
@@ -259,8 +259,25 @@ class MainActivity : AppCompatActivity() {
 
     private fun applyFilter() {
         val list = (0 until games.length()).map { games.getJSONObject(it) }
-            .filter { filter == "all" || it.getString("platform") == filter }
+            .filter { filter == "all" || (filter == "fav" && it.optBoolean("favorite")) || it.getString("platform") == filter }
+            // Lo último que jugaste primero; el resto por título
+            .sortedWith(compareByDescending<JSONObject> { if (it.isNull("last_played")) "" else it.getString("last_played") }.thenBy { it.getString("title") })
         adapter.submit(list)
+        if (list.isEmpty() && filter == "fav") toast("Aún no tienes favoritos: mantén pulsada una carátula o pulsa Y en el mando")
+    }
+
+    private fun toggleFavorite(game: JSONObject) {
+        val fav = !game.optBoolean("favorite")
+        game.put("favorite", fav)
+        applyFilter()
+        toast(if (fav) "Añadido a favoritos" else "Quitado de favoritos")
+        lifecycleScope.launch {
+            try {
+                api.obj(if (fav) "PUT" else "DELETE", "/api/favorites/" + game.getString("id"))
+            } catch (e: Exception) {
+                game.put("favorite", !fav); applyFilter(); toast(e.message ?: "Error")
+            }
+        }
     }
 
     private fun startGame(game: JSONObject) {
@@ -295,7 +312,11 @@ class MainActivity : AppCompatActivity() {
     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_LONG).show()
 
     // ---------------------------------------------------------------------- adapter
-    private inner class GamesAdapter(private val tileHeight: Int, private val onPick: (JSONObject) -> Unit) :
+    private inner class GamesAdapter(
+        private val tileHeight: Int,
+        private val onPick: (JSONObject) -> Unit,
+        private val onFavorite: (JSONObject) -> Unit,
+    ) :
         RecyclerView.Adapter<GamesAdapter.VH>() {
         private var items = listOf<JSONObject>()
         private val colors = mapOf(
@@ -340,9 +361,15 @@ class MainActivity : AppCompatActivity() {
                 addState(intArrayOf(android.R.attr.state_focused), focused); addState(intArrayOf(), normal)
             }
             h.title.text = g.getString("title")
-            h.badge.text = g.getString("platform_name")
+            h.badge.text = (if (g.optBoolean("favorite")) "★ " else "") + g.getString("platform_name")
             h.badge.background = GradientDrawable().apply { setColor(Color.argb(140, 0, 0, 0)); cornerRadius = dp(6).toFloat() }
             h.box.setOnClickListener { onPick(g) }
+            h.box.setOnLongClickListener { onFavorite(g); true }
+            // Botón Y del mando sobre la carátula enfocada = favorito
+            h.box.setOnKeyListener { _, code, ev ->
+                if (code == android.view.KeyEvent.KEYCODE_BUTTON_Y && ev.action == android.view.KeyEvent.ACTION_UP) { onFavorite(g); true }
+                else code == android.view.KeyEvent.KEYCODE_BUTTON_Y
+            }
         }
 
         override fun getItemCount() = items.size

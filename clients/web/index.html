@@ -3,117 +3,201 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#08090d">
+  <meta name="theme-color" content="#10123A">
   <title>CloudPlay</title>
   <link rel="manifest" href="manifest.webmanifest">
+  <link rel="preload" href="fonts/unbounded-latin-800-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
-  <!-- LOGIN: en TV muestra un código para aprobar desde el móvil -->
+  <!-- Plantilla del logotipo: una nube que se convierte en "play" -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <linearGradient id="g-plastic" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#8C7BFF"/><stop offset="1" stop-color="#5B4BD6"/>
+      </linearGradient>
+    </defs>
+  </svg>
+
+  <!-- ============================ LOGIN (tele: código) ============================ -->
   <section id="screen-login" class="screen">
-    <div class="login-wrap">
-      <h1 class="logo">Cloud<span>Play</span></h1>
-      <div class="device-card">
-        <p class="muted">Desde tu móvil, entra en</p>
-        <p id="device-url" class="device-url">…</p>
-        <p class="muted">e introduce este código</p>
-        <p id="device-code" class="device-code">····-····</p>
+    <div class="login">
+      <div class="login-brand">
+        <svg class="mark" viewBox="0 0 200 200" aria-hidden="true"><path class="mark-shape" fill="url(#g-plastic)"/></svg>
+        <h1 class="wordmark">CloudPlay</h1>
+        <p class="lede">Tus juegos de PS2, GameCube y Wii en cualquier pantalla.</p>
       </div>
-      <button id="login-toggle" class="btn ghost" hidden>Entrar con email y contraseña</button>
-      <form id="login-form" class="form">
-        <input id="email" type="email" placeholder="Email" autocomplete="username" required>
-        <input id="password" type="password" placeholder="Contraseña" autocomplete="current-password" required minlength="8">
-        <button class="btn primary" type="submit">Entrar</button>
-        <p id="login-error" class="error"></p>
-      </form>
-      <details class="server">
-        <summary data-focus>Servidor</summary>
-        <div class="row">
-          <input id="server-input" type="url" placeholder="https://play.example.com">
-          <button id="server-save" class="btn" type="button">Guardar</button>
+      <div class="login-panel">
+        <div class="pair">
+          <p class="pair-step">En el móvil, abre</p>
+          <p id="device-url" class="pair-url">…</p>
+          <p class="pair-step">y escribe este código</p>
+          <p id="device-code" class="pair-code" aria-live="polite">········</p>
+          <p class="pair-wait"><span class="dot"></span>Esperando a que lo apruebes</p>
         </div>
-      </details>
+        <button id="login-toggle" class="btn quiet" hidden>Usar email y contraseña</button>
+        <form id="login-form" class="form">
+          <label>Email<input id="email" type="email" autocomplete="username" required></label>
+          <label>Contraseña<input id="password" type="password" autocomplete="current-password" required minlength="8"></label>
+          <button class="btn primary" type="submit">Entrar</button>
+          <p id="login-error" class="error" role="alert"></p>
+        </form>
+        <details class="server">
+          <summary data-focus>Servidor</summary>
+          <div class="row">
+            <input id="server-input" type="url" placeholder="https://play.example.com" aria-label="URL del servidor">
+            <button id="server-save" class="btn" type="button">Guardar</button>
+          </div>
+        </details>
+      </div>
     </div>
   </section>
 
-  <!-- LINK: el móvil aprueba el código de la tele -->
+  <!-- ============================ LINK (móvil aprueba) ============================ -->
   <section id="screen-link" class="screen">
-    <div class="login-wrap">
-      <h1 class="logo">Cloud<span>Play</span></h1>
-      <h2>Conectar una tele</h2>
-      <div id="link-login"></div>
-      <form id="link-form" class="form" hidden>
-        <input id="link-code" placeholder="XXXX-XXXX" autocapitalize="characters" autocomplete="off" maxlength="9" required>
-        <button class="btn primary" type="submit">Conectar</button>
-        <p id="link-msg"></p>
-      </form>
+    <div class="login single">
+      <div class="login-brand">
+        <svg class="mark" viewBox="0 0 200 200" aria-hidden="true"><path class="mark-shape" fill="url(#g-plastic)"/></svg>
+        <h1 class="wordmark">Conectar una tele</h1>
+        <p class="lede">Escribe el código que aparece en la pantalla de la tele.</p>
+      </div>
+      <div class="login-panel">
+        <div id="link-login"></div>
+        <form id="link-form" class="form" hidden>
+          <label>Código de la tele<input id="link-code" class="code-input" placeholder="XXXX-XXXX" autocapitalize="characters" autocomplete="off" maxlength="9" required></label>
+          <button class="btn primary" type="submit">Conectar la tele</button>
+          <p id="link-msg" role="status"></p>
+        </form>
+      </div>
     </div>
   </section>
 
-  <!-- BIBLIOTECA -->
+  <!-- ================================ BIBLIOTECA ================================= -->
   <section id="screen-library" class="screen">
     <header class="topbar">
-      <h1 class="logo small">Cloud<span>Play</span></h1>
-      <nav class="filters">
+      <a class="brand" href="#/library" aria-label="CloudPlay">
+        <svg class="mark small" viewBox="0 0 200 200" aria-hidden="true"><path class="mark-shape" fill="url(#g-plastic)"/></svg>
+        <span>CloudPlay</span>
+      </a>
+      <nav class="filters" aria-label="Plataforma">
+        <span class="filter-pill" aria-hidden="true"></span>
         <button class="filter on" data-platform="all">Todo</button>
         <button class="filter" data-platform="ps2">PS2</button>
         <button class="filter" data-platform="gc">GameCube</button>
         <button class="filter" data-platform="wii">Wii</button>
       </nav>
-      <button id="logout" class="btn ghost">Salir</button>
+      <input id="search" class="search" type="search" placeholder="Buscar juego" aria-label="Buscar juego">
+      <a id="admin-link" class="btn quiet" href="#/admin" hidden>Panel</a>
+      <button id="logout" class="btn quiet">Salir</button>
     </header>
-    <div id="resume-banner" class="resume" hidden>
-      <span>Partida en curso: <strong id="resume-title"></strong></span>
-      <button id="resume-btn" class="btn primary" data-autofocus>Continuar</button>
-      <button id="resume-end" class="btn ghost">Cerrar</button>
-    </div>
-    <main id="grid" class="grid"></main>
+
+    <main class="library">
+      <section id="resume" class="resume" hidden>
+        <div class="resume-art" id="resume-art"></div>
+        <div class="resume-body">
+          <p class="resume-kicker" id="resume-kicker">Partida abierta</p>
+          <h2 id="resume-title"></h2>
+          <div class="row">
+            <button id="resume-btn" class="btn primary" data-autofocus>Volver a la partida</button>
+            <button id="resume-end" class="btn quiet">Cerrar la partida</button>
+          </div>
+        </div>
+      </section>
+      <section class="rail" id="rail-recent" hidden><h2>Jugados hace poco</h2><div class="rail-track"></div></section>
+      <section class="rail" id="rail-fav" hidden><h2>Favoritos</h2><div class="rail-track"></div></section>
+      <section class="all">
+        <h2 id="all-title">Toda la biblioteca</h2>
+        <div id="grid" class="grid"></div>
+      </section>
+      <p class="hint-bar">Y en el mando, F en el teclado o el botón amarillo: añadir a favoritos</p>
+    </main>
   </section>
 
-  <!-- REPRODUCTOR -->
+  <!-- =================================== PANEL =================================== -->
+  <section id="screen-admin" class="screen">
+    <header class="topbar">
+      <a class="brand" href="#/library"><svg class="mark small" viewBox="0 0 200 200" aria-hidden="true"><path class="mark-shape" fill="url(#g-plastic)"/></svg><span>Panel</span></a>
+      <span class="admin-updated" id="admin-updated"></span>
+      <a class="btn quiet" href="#/library">Biblioteca</a>
+    </header>
+    <main class="admin">
+      <div class="kpis" id="kpis"></div>
+      <h2>Nodos</h2>
+      <table class="table" id="nodes-table"><thead><tr><th>Nodo</th><th>Estado</th><th>GPU</th><th>Plataformas</th><th>Carga</th><th>Último latido</th></tr></thead><tbody></tbody></table>
+      <h2>Sesiones activas</h2>
+      <table class="table" id="sessions-table"><thead><tr><th>Jugador</th><th>Juego</th><th>Estado</th><th>Nodo</th><th>Desde</th><th></th></tr></thead><tbody></tbody></table>
+    </main>
+  </section>
+
+  <!-- ================================= PARTIDA ================================== -->
   <section id="screen-player" class="screen player">
     <video id="video" autoplay playsinline></video>
-    <div id="player-status" class="player-status loading">
-      <div class="spinner"></div>
-      <p id="player-status-text">Arrancando…</p>
+
+    <div id="boot" class="boot">
+      <svg class="boot-mark" viewBox="0 0 200 200" aria-hidden="true">
+        <path id="boot-shape" fill="url(#g-plastic)"/>
+        <path id="boot-detail" fill="none" stroke="#E8F1FF" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" opacity="0"/>
+      </svg>
+      <p class="boot-game" id="boot-game"></p>
+      <p class="boot-queue" id="boot-queue" hidden><span id="boot-pos">1</span><small>en la cola</small></p>
+      <ol class="boot-steps" id="boot-steps">
+        <li data-step="queue" hidden>Esperando un hueco libre</li>
+        <li data-step="booting">Encendiendo la consola</li>
+        <li data-step="linking">Conectando tu mando</li>
+        <li data-step="live">A jugar</li>
+      </ol>
+      <p class="boot-msg" id="boot-msg" role="status"></p>
+      <button class="btn quiet boot-cancel" id="boot-cancel">Cancelar</button>
     </div>
+
     <div id="stats" class="stats" hidden></div>
-    <button id="menu-btn" class="menu-btn" aria-label="Menú">☰</button>
-    <div id="game-menu" class="game-menu" hidden>
-      <div class="menu-card">
-        <h2>Menú</h2>
-        <button class="btn primary" data-action="resume" data-autofocus>Continuar</button>
-        <button class="btn" data-action="savestate">Guardar estado</button>
-        <button class="btn" data-action="loadstate">Cargar estado</button>
-        <button class="btn" data-action="nextslot">Siguiente ranura</button>
-        <div class="row">
-          <button class="btn small" data-action="quality" data-kbps="0">Auto</button>
-          <button class="btn small" data-action="quality" data-kbps="4000">4 Mb</button>
-          <button class="btn small" data-action="quality" data-kbps="8000">8 Mb</button>
-          <button class="btn small" data-action="quality" data-kbps="15000">15 Mb</button>
+    <button id="menu-btn" class="menu-btn" aria-label="Abrir el menú">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+    </button>
+
+    <div id="game-menu" class="sheet" hidden>
+      <div class="sheet-card" role="dialog" aria-label="Menú de la partida">
+        <h2 id="menu-title">Menú</h2>
+        <button class="btn primary" data-action="resume" data-autofocus>Seguir jugando</button>
+        <div class="grid2">
+          <button class="btn" data-action="savestate">Guardar estado</button>
+          <button class="btn" data-action="loadstate">Cargar estado</button>
         </div>
-        <button class="btn" data-action="stats">Estadísticas</button>
-        <button class="btn" data-action="detach">Salir sin cerrar (seguir en otro dispositivo)</button>
+        <button class="btn" data-action="nextslot">Cambiar de ranura</button>
+        <p class="sheet-label">Calidad de imagen</p>
+        <div class="seg" id="quality">
+          <button class="btn" data-action="quality" data-kbps="0">Auto</button>
+          <button class="btn" data-action="quality" data-kbps="4000">4 Mb</button>
+          <button class="btn" data-action="quality" data-kbps="8000">8 Mb</button>
+          <button class="btn" data-action="quality" data-kbps="15000">15 Mb</button>
+        </div>
+        <button class="btn" data-action="stats">Ver datos de conexión</button>
+        <button class="btn" data-action="detach">Salir y seguir en otra pantalla</button>
         <button class="btn danger" data-action="quit">Cerrar el juego</button>
-        <p class="muted hint">Mando: mantén Select+Start · Tele: Atrás · PC: Esc</p>
+        <p class="hint">Abre este menú con Select + Start, Atrás en la tele o Esc</p>
       </div>
     </div>
   </section>
 
-  <div id="modal" class="modal" hidden>
-    <div class="menu-card">
+  <div id="modal" class="sheet modal" hidden>
+    <div class="sheet-card" role="alertdialog">
       <h2 id="modal-title"></h2>
       <p id="modal-text" class="muted"></p>
       <div id="modal-actions" class="stack"></div>
     </div>
   </div>
-  <div id="toast" class="toast" hidden></div>
+  <div id="toast" class="toast" role="status" hidden></div>
 
+  <script src="vendor/motion.min.js"></script>
+  <script src="vendor/gsap.min.js"></script>
+  <script src="vendor/MorphSVGPlugin.min.js"></script>
   <script src="js/config.js"></script>
   <script src="js/api.js"></script>
+  <script src="js/fx.js"></script>
   <script src="js/input.js"></script>
   <script src="js/nav.js"></script>
   <script src="js/player.js"></script>
+  <script src="js/admin.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

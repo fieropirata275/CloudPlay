@@ -37,7 +37,7 @@ def on_answer(p, _):
     cw.emit("set-local-description", ans, Gst.Promise.new())
     st.set_answer(ans.sdp.as_text())
 
-st = S.Streamer(":99", to_client, got_input.append, got_ctrl.append, [], encoder="auto", fps=30, bitrate_kbps=4000)
+st = S.Streamer(__import__("os").environ.get("DISPLAY", ":99"), to_client, got_input.append, got_ctrl.append, [], encoder="auto", fps=30, bitrate_kbps=4000)
 
 # "Cliente": webrtcbin que recibe y decodifica
 cp = Gst.Pipeline.new("client"); _w = Gst.ElementFactory.make("webrtcbin", "c"); _w.set_property("bundle-policy", GstWebRTC.WebRTCBundlePolicy.MAX_BUNDLE); cp.add(_w)

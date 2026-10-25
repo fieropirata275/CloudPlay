@@ -114,6 +114,7 @@ class StreamActivity : AppCompatActivity() {
                 val s = api.obj("GET", "/api/sessions/$sessionId")
                 if (!s.has("signal_url")) return@launch end(s.optString("error").ifEmpty { "La sesión ya ha terminado" })
                 signalUrl = s.getString("signal_url")
+                if (s.optString("status") == "queued") showQueue(s.optInt("queue_position", 1))
                 iceServers = parseIce(s.optJSONArray("ice_servers") ?: JSONArray())
                 connectSignal()
             } catch (e: Exception) { end(e.message ?: "Error") }
@@ -161,6 +162,10 @@ class StreamActivity : AppCompatActivity() {
     private fun hasGamepad() = InputDevice.getDeviceIds().any { id ->
         val src = InputDevice.getDevice(id)?.sources ?: 0
         (src and InputDevice.SOURCE_GAMEPAD == InputDevice.SOURCE_GAMEPAD) || (src and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK)
+    }
+
+    private fun showQueue(position: Int) {
+        setStatus(if (position <= 1) "Eres el siguiente en la cola" else "Estás el $position.º en la cola")
     }
 
     private fun setStatus(text: String) {
@@ -326,7 +331,8 @@ class StreamActivity : AppCompatActivity() {
 
     private fun onSignal(m: JSONObject) {
         when (m.optString("type")) {
-            "peer-joined" -> if (m.optString("role") == "worker") setStatus("Conectando con el nodo…")
+            "peer-joined" -> if (m.optString("role") == "worker") setStatus("Conectando tu mando…")
+            "queue" -> showQueue(m.optInt("position", 1))
             "offer" -> onOffer(m.getString("sdp"))
             "ice" -> {
                 val cand = m.optString("candidate"); if (cand.isEmpty()) return
@@ -335,6 +341,7 @@ class StreamActivity : AppCompatActivity() {
             }
             "peer-left" -> if (m.optString("role") == "worker") setStatus("El nodo se ha desconectado, esperando…")
             "session-state" -> when (m.optString("status")) {
+                "starting" -> setStatus("Encendiendo la consola…")
                 "failed" -> end(m.optString("error").ifEmpty { "La sesión ha fallado" })
                 "ended" -> end("Sesión terminada")
             }

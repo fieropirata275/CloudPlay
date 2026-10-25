@@ -13,13 +13,22 @@ mensajes entre los dos roles (vía Redis pub/sub, así funciona con varias répl
 | `answer` | cliente → worker | `{sdp}` |
 | `ice` | ambos | `{candidate, sdpMLineIndex}` |
 | `bye` | ambos | `{reason}` |
-| `session-state` | servidor → cliente | `{status, error}` — `failed` / `ended` desde el agente |
+| `session-state` | servidor → cliente | `{status, error}` — `starting` al salir de la cola, `failed` / `ended` desde el agente |
+| `queue` | servidor → cliente | `{position}` — cada 2 s mientras la partida espera hueco |
 
 Códigos de cierre: `4403` sesión inexistente o token inválido · `4409` otra conexión del mismo rol
 te ha sustituido (abriste la partida en otro dispositivo).
 
 Cada `peer-joined` del cliente hace que el worker **reconstruya el pipeline** y mande una offer nueva:
 así se puede saltar del móvil a la tele sin cerrar el juego.
+
+### Cola de espera
+
+`POST /api/sessions` devuelve **201** si hay hueco (estado `starting`) o **202** si la partida entra
+en la cola (estado `queued`, con `queue_position`). El cliente se conecta igualmente a la señalización
+y recibe `queue` con su posición; cuando se libera un hueco llega `session-state: starting` y el
+worker se conecta. La cola es FIFO por plataforma y caduca a los 15 min (`CP_QUEUE_MAX_WAIT`).
+Si ningún nodo sirve esa plataforma, la API responde **503** sin encolar.
 
 ## 2. Canal de datos `input` (binario, `ordered=false`, `maxRetransmits=0`)
 

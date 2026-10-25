@@ -5,7 +5,7 @@ from sqlalchemy import func, select, text
 
 from .config import settings
 from .db import AsyncSession, is_postgres
-from .models import ACTIVE_STATES, Node, Session, now
+from .models import PLACED_STATES, Node, Session, now
 
 
 async def pick_node(db: AsyncSession, platform: str) -> Node | None:
@@ -16,7 +16,7 @@ async def pick_node(db: AsyncSession, platform: str) -> Node | None:
 
     load = (
         select(Session.node_id, func.count().label("n"))
-        .where(Session.status.in_(ACTIVE_STATES), Session.node_id.is_not(None))
+        .where(Session.status.in_(PLACED_STATES), Session.node_id.is_not(None))
         .group_by(Session.node_id)
         .subquery()
     )

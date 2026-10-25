@@ -5,7 +5,8 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, Uni
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 PLATFORMS = {"ps2": "PlayStation 2", "gc": "GameCube", "wii": "Wii"}
-ACTIVE_STATES = ("pending", "starting", "running", "ending")
+ACTIVE_STATES = ("queued", "pending", "starting", "running", "ending")
+PLACED_STATES = ("pending", "starting", "running", "ending")  # ocupan hueco en un nodo
 
 
 def uid() -> str:
@@ -65,5 +66,13 @@ class Session(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     worker_token_hash: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+    dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class Favorite(Base):
+    __tablename__ = "favorites"
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    game_id: Mapped[str] = mapped_column(ForeignKey("games.id", ondelete="CASCADE"), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

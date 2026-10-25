@@ -76,8 +76,12 @@ def test_full_flow(client):
         start = recv_until(agent, "start")
         assert start["rom_path"].startswith("ps2/") and start["session_id"] == sess["id"]
 
-        # Capacidad del nodo = 1 -> la segunda sesión no cabe (el admin tiene cupo de 4)
-        assert client.post("/api/sessions", json={"game_id": ps2["id"]}, headers=H).status_code == 503
+        # Capacidad del nodo = 1 -> la segunda sesión va a la COLA (el admin tiene cupo de 4)
+        q = client.post("/api/sessions", json={"game_id": ps2["id"]}, headers=H)
+        assert q.status_code == 202, q.text
+        queued = q.json()
+        assert queued["status"] == "queued" and queued["queue_position"] == 1
+        gc = next(g for g in games if g["platform"] == "gc")
 
         agent.send_json({"type": "session_state", "session_id": sess["id"], "status": "running"})
         time.sleep(0.2)
@@ -110,11 +114,39 @@ def test_full_flow(client):
         time.sleep(0.2)
         assert client.get(f"/api/sessions/{sid}", headers=H).json()["status"] == "ended"
 
+        # Queda hueco -> el dispatcher saca de la cola la sesión en espera y la manda al nodo
+        start2 = recv_until(agent, "start", limit=20)
+        assert start2["session_id"] == queued["id"] and start2["worker_token"]
+        assert client.get(f"/api/sessions/{queued['id']}", headers=H).json()["status"] == "starting"
+        agent.send_json({"type": "session_state", "session_id": queued["id"], "status": "running"})
+        time.sleep(0.2)
+
+        # Panel admin: métricas, listado enriquecido y cierre forzado
+        st = client.get("/api/admin/stats", headers=H).json()
+        assert st["placed"] == 1 and st["queued"] == 0 and st["nodes_online"] == 1
+        rows = client.get("/api/admin/sessions", headers=H).json()
+        assert rows[0]["user"] == "admin@test.local" and rows[0]["node"] == "gpu-01"
+        assert client.delete(f"/api/admin/sessions/{queued['id']}", headers=H).json()["status"] == "ending"
+        assert recv_until(agent, "stop")["session_id"] == queued["id"]
+
+        # Favoritos y recientes
+        assert client.put(f"/api/favorites/{ps2['id']}", headers=H).json()["favorite"] is True
+        g2 = {g["id"]: g for g in client.get("/api/games", headers=H).json()}
+        assert g2[ps2["id"]]["favorite"] and g2[ps2["id"]]["play_count"] >= 1 and g2[ps2["id"]]["last_played"]
+        assert not g2[gc["id"]]["favorite"] and g2[gc["id"]]["play_count"] == 0
+        client.delete(f"/api/favorites/{ps2['id']}", headers=H)
+        assert not client.get("/api/games", headers=H).json()[0]["favorite"]
+
 
 def test_device_flow(client):
     tok = client.post("/api/auth/login", json={"email": "admin@test.local", "password": "supersecret"}).json()[
         "access_token"
     ]
+    # Plataforma que ningún nodo sirve -> 503 inmediato (no se encola para siempre)
+    H = {"Authorization": f"Bearer {tok}"}
+    wii = client.post("/api/admin/games", json={"title": "X", "platform": "wii", "rom_path": "wii/x.wbfs"}, headers=H).json()
+    r = client.post("/api/sessions", json={"game_id": wii["id"]}, headers=H)
+    assert r.status_code == 503, r.text
     d = client.post("/api/auth/device/start").json()
     assert len(d["user_code"]) == 9
     assert client.post("/api/auth/device/poll", json={"device_code": d["device_code"]}).json()["status"] == "pending"

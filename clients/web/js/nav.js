@@ -42,6 +42,12 @@
     if (pref || list[0]) (pref || list[0]).focus();
   };
 
+  // Acción secundaria sobre el elemento enfocado (favorito): Y del mando, tecla F o botón amarillo.
+  function secondary() {
+    var el = document.activeElement;
+    if (el) el.dispatchEvent(new CustomEvent('cp-secondary', { bubbles: true }));
+  }
+
   CP.navSetActive = function (v) { active = v; };
   CP.navOnBack = function (fn) { backHandler = fn; };
 
@@ -49,6 +55,11 @@
   root.addEventListener('keydown', function (e) {
     if (!active) return;
     var tag = document.activeElement && document.activeElement.tagName;
+    if ((e.keyCode === 70 || e.keyCode === 405) && document.activeElement && document.activeElement.tagName !== 'INPUT') {
+      e.preventDefault();
+      secondary();
+      return;
+    }
     if (DIRS[e.keyCode]) {
       if (tag === 'INPUT' && (e.keyCode === 37 || e.keyCode === 39)) return;
       e.preventDefault();
@@ -71,6 +82,7 @@
         if (pressed(15) || a[0] > 0.6) bits |= 8;
         if (pressed(0)) bits |= 16;
         if (pressed(1)) bits |= 32;
+        if (pressed(3)) bits |= 64;
         var now = Date.now(), fresh = bits & ~lastPad;
         if (bits & 15 && now > padRepeatAt) { fresh |= bits & 15; padRepeatAt = now + 180; }
         if (fresh & 1) CP.navMove('up');
@@ -79,6 +91,7 @@
         if (fresh & 8) CP.navMove('right');
         if (fresh & 16 && document.activeElement) document.activeElement.click();
         if (fresh & 32 && backHandler) backHandler();
+        if (fresh & 64) secondary();
         if (!(bits & 15)) padRepeatAt = 0;
         lastPad = bits;
       }
