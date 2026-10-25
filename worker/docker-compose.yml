@@ -1,0 +1,15 @@
+# Nodo worker. Requisitos en el host: Docker, módulo uinput cargado y
+# nvidia-container-toolkit (GPU=nvidia) o /dev/dri (GPU=vaapi).
+#   docker build -t cloudplay/session:latest ./session
+#   cp worker.env.example worker.env && docker compose up -d --build
+services:
+  agent:
+    build: ./agent
+    restart: unless-stopped
+    env_file: worker.env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Misma ruta dentro y fuera: el agente crea carpetas que luego monta en contenedores hermanos
+      - ${DATA_DIR:-/var/lib/cloudplay}:${DATA_DIR:-/var/lib/cloudplay}
+      # Solo lectura para escanear el catálogo
+      - ${LIBRARY_DIR:-/srv/cloudplay/library}:/library:ro

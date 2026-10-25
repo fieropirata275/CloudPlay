@@ -1,0 +1,207 @@
+/* Reproductor: señalización + RTCPeerConnection + canales de datos + bitrate adaptativo. */
+(function (root) {
+  'use strict';
+  var CP = root.CP = root.CP || {};
+
+  var ABR = { min: 2000, max: 20000, start: 8000 };
+
+  /**
+   * opts: { session, video, onStatus(text, kind), onToast(text), onEnd(reason), onStats(obj), isTV }
+   */
+  function Player(opts) {
+    this.o = opts;
+    this.session = opts.session;
+    this.video = opts.video;
+    this.pc = null;
+    this.ws = null;
+    this.inputCh = null;
+    this.controlCh = null;
+    this.closed = false;
+    this.pendingIce = [];
+    this.bitrate = ABR.start;
+    this.lastStats = null;
+    this.rtt = 0;
+    var self = this;
+    this.input = new CP.InputManager({
+      isTV: opts.isTV,
+      send: function (buf) {
+        if (self.inputCh && self.inputCh.readyState === 'open') self.inputCh.send(buf);
+      },
+      onMenu: function () { if (opts.onMenu) opts.onMenu(); }
+    });
+  }
+
+  Player.prototype.start = function () {
+    this._connectSignal(0);
+    var self = this;
+    this._statsTimer = setInterval(function () { self._pollStats(); }, 2000);
+    this._pingTimer = setInterval(function () { self.control({ t: 'ping', ts: Date.now() }); }, 3000);
+  };
+
+  Player.prototype._connectSignal = function (attempt) {
+    if (this.closed) return;
+    var self = this;
+    var url = this.session.signal_url + '?role=client&token=' + encodeURIComponent(CP.token());
+    this.o.onStatus(attempt ? 'Reconectando…' : 'Arrancando la consola en la nube…', 'loading');
+    var ws = this.ws = new WebSocket(url);
+    ws.onmessage = function (ev) {
+      var m;
+      try { m = JSON.parse(ev.data); } catch (e) { return; }
+      self._onSignal(m);
+    };
+    ws.onclose = function (ev) {
+      if (self.closed) return;
+      if (ev.code === 4403) { self.o.onEnd('La sesión ya no existe'); return; }
+      if (ev.code === 4409) { self.o.onEnd('Has abierto esta partida en otro dispositivo'); return; }
+      setTimeout(function () { self._connectSignal(attempt + 1); }, Math.min(1000 * Math.pow(2, attempt), 10000));
+    };
+  };
+
+  Player.prototype._sendSignal = function (m) {
+    if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify(m));
+  };
+
+  Player.prototype._onSignal = function (m) {
+    var self = this;
+    switch (m.type) {
+      case 'peer-joined':
+        if (m.role === 'worker') this.o.onStatus('Conectando con el nodo…', 'loading');
+        break;
+      case 'offer':
+        this._newPeer();
+        this.pc.setRemoteDescription({ type: 'offer', sdp: m.sdp })
+          .then(function () {
+            self.pendingIce.splice(0).forEach(function (c) { self.pc.addIceCandidate(c).catch(function () {}); });
+            return self.pc.createAnswer();
+          })
+          .then(function (ans) { return self.pc.setLocalDescription(ans); })
+          .then(function () { self._sendSignal({ type: 'answer', sdp: self.pc.localDescription.sdp }); })
+          .catch(function (e) { self.o.onStatus('Error WebRTC: ' + e.message, 'error'); });
+        break;
+      case 'ice':
+        if (!m.candidate) return;
+        var c = { candidate: m.candidate, sdpMLineIndex: m.sdpMLineIndex };
+        if (this.pc && this.pc.remoteDescription) this.pc.addIceCandidate(c).catch(function () {});
+        else this.pendingIce.push(c);
+        break;
+      case 'peer-left':
+        if (m.role === 'worker') this.o.onStatus('El nodo se ha desconectado, esperando…', 'loading');
+        break;
+      case 'session-state':
+        if (m.status === 'failed') this.o.onEnd(m.error || 'La sesión ha fallado');
+        else if (m.status === 'ended') this.o.onEnd('Sesión terminada');
+        break;
+      case 'bye':
+        this.o.onEnd(m.reason === 'emulator-exit' ? 'El juego se ha cerrado' : (m.reason || 'Fin de la sesión'));
+        break;
+    }
+  };
+
+  Player.prototype._newPeer = function () {
+    if (this.pc) { try { this.pc.close(); } catch (e) {} }
+    var self = this;
+    var pc = this.pc = new RTCPeerConnection({ iceServers: this.session.ice_servers || [], bundlePolicy: 'max-bundle' });
+    var stream = new MediaStream();
+    this.video.srcObject = stream;
+    this.lastStats = null;
+
+    pc.ontrack = function (ev) {
+      stream.addTrack(ev.track);
+      var r = ev.receiver;
+      // Latencia mínima en el jitter buffer (Chrome/Chromium)
+      try { if ('playoutDelayHint' in r) r.playoutDelayHint = 0; } catch (e) {}
+      try { if ('jitterBufferTarget' in r) r.jitterBufferTarget = 0; } catch (e) {}
+      var p = self.video.play();
+      if (p && p.catch) p.catch(function () {
+        self.video.muted = true; // autoplay bloqueado con audio: arrancamos mudo y avisamos
+        self.video.play();
+        self.o.onToast('Toca la pantalla para activar el sonido');
+      });
+    };
+    pc.onicecandidate = function (ev) {
+      if (ev.candidate) self._sendSignal({ type: 'ice', candidate: ev.candidate.candidate, sdpMLineIndex: ev.candidate.sdpMLineIndex });
+    };
+    pc.onconnectionstatechange = function () {
+      var s = pc.connectionState;
+      if (s === 'connected') { self.o.onStatus('', 'ok'); self.input.start(); }
+      else if (s === 'failed') self.o.onStatus('No se pudo conectar (firewall/TURN)', 'error');
+      else if (s === 'disconnected') self.o.onStatus('Conexión inestable…', 'loading');
+    };
+    pc.ondatachannel = function (ev) {
+      var ch = ev.channel;
+      ch.binaryType = 'arraybuffer';
+      if (ch.label === 'input') self.inputCh = ch;
+      if (ch.label === 'control') {
+        self.controlCh = ch;
+        ch.onmessage = function (e) { self._onControl(e.data); };
+        ch.onopen = function () { self.control({ t: 'keyframe' }); };
+      }
+    };
+  };
+
+  Player.prototype._onControl = function (data) {
+    var m;
+    try { m = JSON.parse(data); } catch (e) { return; }
+    if (m.t === 'pong') this.rtt = Date.now() - m.ts;
+    else if (m.t === 'hello') { this.encoder = m.encoder; this.bitrate = m.bitrate; }
+    else if (m.t === 'bitrate') this.bitrate = m.kbps;
+    else if (m.t === 'toast') this.o.onToast({ savestate: 'Estado guardado', loadstate: 'Estado cargado', nextslot: 'Siguiente ranura', screenshot: 'Captura hecha' }[m.text] || m.text);
+    else if (m.t === 'bye') this._onSignal({ type: 'bye', reason: m.reason });
+  };
+
+  Player.prototype.control = function (m) {
+    if (this.controlCh && this.controlCh.readyState === 'open') this.controlCh.send(JSON.stringify(m));
+  };
+
+  /** Bitrate adaptativo AIMD según pérdida de paquetes de vídeo. */
+  Player.prototype._pollStats = function () {
+    var self = this;
+    if (!this.pc || this.pc.connectionState !== 'connected') return;
+    this.pc.getStats().then(function (report) {
+      var v = null, pair = null;
+      report.forEach(function (s) {
+        if (s.type === 'inbound-rtp' && (s.kind === 'video' || s.mediaType === 'video')) v = s;
+        if (s.type === 'candidate-pair' && s.nominated && s.state === 'succeeded') pair = s;
+      });
+      if (!v) return;
+      var prev = self.lastStats, now = { lost: v.packetsLost || 0, recv: v.packetsReceived || 0, bytes: v.bytesReceived || 0,
+        frames: v.framesDecoded || 0, ts: v.timestamp, jitter: v.jitter || 0 };
+      self.lastStats = now;
+      if (!prev) return;
+      var dLost = now.lost - prev.lost, dRecv = now.recv - prev.recv, dt = (now.ts - prev.ts) / 1000;
+      var loss = dRecv + dLost > 0 ? dLost / (dRecv + dLost) : 0;
+      var kbps = Math.round((now.bytes - prev.bytes) * 8 / 1000 / dt);
+      var fps = Math.round((now.frames - prev.frames) / dt);
+      var target = self.bitrate;
+      if (loss > 0.02) target = Math.max(ABR.min, Math.round(self.bitrate * 0.75));
+      else if (loss < 0.005 && kbps > self.bitrate * 0.6) target = Math.min(ABR.max, self.bitrate + 500);
+      if (self.manualBitrate) target = self.manualBitrate;
+      if (Math.abs(target - self.bitrate) >= 250) self.control({ t: 'bitrate', kbps: target });
+      if (self.o.onStats) self.o.onStats({
+        fps: fps, kbps: kbps, loss: Math.round(loss * 1000) / 10, rtt: pair && pair.currentRoundTripTime ? Math.round(pair.currentRoundTripTime * 1000) : self.rtt,
+        jitter: Math.round(now.jitter * 1000), target: self.bitrate, encoder: self.encoder || '?'
+      });
+    }).catch(function () {});
+  };
+
+  Player.prototype.setQuality = function (kbps) {
+    this.manualBitrate = kbps || 0;
+    if (kbps) this.control({ t: 'bitrate', kbps: kbps });
+  };
+
+  Player.prototype.pauseInput = function (paused) {
+    if (paused) this.input.stop(); else this.input.start();
+  };
+
+  Player.prototype.close = function () {
+    this.closed = true;
+    clearInterval(this._statsTimer);
+    clearInterval(this._pingTimer);
+    this.input.stop();
+    if (this.pc) { try { this.pc.close(); } catch (e) {} }
+    if (this.ws) { try { this.ws.close(); } catch (e) {} }
+    this.video.srcObject = null;
+  };
+
+  CP.Player = Player;
+})(window);

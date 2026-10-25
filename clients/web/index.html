@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#08090d">
+  <title>CloudPlay</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <!-- LOGIN: en TV muestra un código para aprobar desde el móvil -->
+  <section id="screen-login" class="screen">
+    <div class="login-wrap">
+      <h1 class="logo">Cloud<span>Play</span></h1>
+      <div class="device-card">
+        <p class="muted">Desde tu móvil, entra en</p>
+        <p id="device-url" class="device-url">…</p>
+        <p class="muted">e introduce este código</p>
+        <p id="device-code" class="device-code">····-····</p>
+      </div>
+      <button id="login-toggle" class="btn ghost" hidden>Entrar con email y contraseña</button>
+      <form id="login-form" class="form">
+        <input id="email" type="email" placeholder="Email" autocomplete="username" required>
+        <input id="password" type="password" placeholder="Contraseña" autocomplete="current-password" required minlength="8">
+        <button class="btn primary" type="submit">Entrar</button>
+        <p id="login-error" class="error"></p>
+      </form>
+      <details class="server">
+        <summary data-focus>Servidor</summary>
+        <div class="row">
+          <input id="server-input" type="url" placeholder="https://play.example.com">
+          <button id="server-save" class="btn" type="button">Guardar</button>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <!-- LINK: el móvil aprueba el código de la tele -->
+  <section id="screen-link" class="screen">
+    <div class="login-wrap">
+      <h1 class="logo">Cloud<span>Play</span></h1>
+      <h2>Conectar una tele</h2>
+      <div id="link-login"></div>
+      <form id="link-form" class="form" hidden>
+        <input id="link-code" placeholder="XXXX-XXXX" autocapitalize="characters" autocomplete="off" maxlength="9" required>
+        <button class="btn primary" type="submit">Conectar</button>
+        <p id="link-msg"></p>
+      </form>
+    </div>
+  </section>
+
+  <!-- BIBLIOTECA -->
+  <section id="screen-library" class="screen">
+    <header class="topbar">
+      <h1 class="logo small">Cloud<span>Play</span></h1>
+      <nav class="filters">
+        <button class="filter on" data-platform="all">Todo</button>
+        <button class="filter" data-platform="ps2">PS2</button>
+        <button class="filter" data-platform="gc">GameCube</button>
+        <button class="filter" data-platform="wii">Wii</button>
+      </nav>
+      <button id="logout" class="btn ghost">Salir</button>
+    </header>
+    <div id="resume-banner" class="resume" hidden>
+      <span>Partida en curso: <strong id="resume-title"></strong></span>
+      <button id="resume-btn" class="btn primary" data-autofocus>Continuar</button>
+      <button id="resume-end" class="btn ghost">Cerrar</button>
+    </div>
+    <main id="grid" class="grid"></main>
+  </section>
+
+  <!-- REPRODUCTOR -->
+  <section id="screen-player" class="screen player">
+    <video id="video" autoplay playsinline></video>
+    <div id="player-status" class="player-status loading">
+      <div class="spinner"></div>
+      <p id="player-status-text">Arrancando…</p>
+    </div>
+    <div id="stats" class="stats" hidden></div>
+    <button id="menu-btn" class="menu-btn" aria-label="Menú">☰</button>
+    <div id="game-menu" class="game-menu" hidden>
+      <div class="menu-card">
+        <h2>Menú</h2>
+        <button class="btn primary" data-action="resume" data-autofocus>Continuar</button>
+        <button class="btn" data-action="savestate">Guardar estado</button>
+        <button class="btn" data-action="loadstate">Cargar estado</button>
+        <button class="btn" data-action="nextslot">Siguiente ranura</button>
+        <div class="row">
+          <button class="btn small" data-action="quality" data-kbps="0">Auto</button>
+          <button class="btn small" data-action="quality" data-kbps="4000">4 Mb</button>
+          <button class="btn small" data-action="quality" data-kbps="8000">8 Mb</button>
+          <button class="btn small" data-action="quality" data-kbps="15000">15 Mb</button>
+        </div>
+        <button class="btn" data-action="stats">Estadísticas</button>
+        <button class="btn" data-action="detach">Salir sin cerrar (seguir en otro dispositivo)</button>
+        <button class="btn danger" data-action="quit">Cerrar el juego</button>
+        <p class="muted hint">Mando: mantén Select+Start · Tele: Atrás · PC: Esc</p>
+      </div>
+    </div>
+  </section>
+
+  <div id="modal" class="modal" hidden>
+    <div class="menu-card">
+      <h2 id="modal-title"></h2>
+      <p id="modal-text" class="muted"></p>
+      <div id="modal-actions" class="stack"></div>
+    </div>
+  </div>
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/input.js"></script>
+  <script src="js/nav.js"></script>
+  <script src="js/player.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

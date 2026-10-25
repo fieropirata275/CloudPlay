@@ -1,0 +1,10 @@
+{
+  "name": "CloudPlay",
+  "short_name": "CloudPlay",
+  "start_url": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#08090d",
+  "theme_color": "#08090d",
+  "icons": [{ "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" }]
+}

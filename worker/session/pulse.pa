@@ -1,0 +1,4 @@
+load-module module-native-protocol-unix
+load-module module-null-sink sink_name=cloudplay sink_properties=device.description=CloudPlay rate=48000 channels=2
+set-default-sink cloudplay
+set-default-source cloudplay.monitor

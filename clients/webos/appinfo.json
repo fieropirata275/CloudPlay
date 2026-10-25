@@ -1,0 +1,14 @@
+{
+  "id": "it.neurofix.cloudplay",
+  "version": "1.0.0",
+  "vendor": "NeuroFix IT",
+  "type": "web",
+  "main": "index.html",
+  "title": "CloudPlay",
+  "icon": "icon.png",
+  "largeIcon": "largeIcon.png",
+  "bgColor": "#08090d",
+  "resolution": "1920x1080",
+  "disableBackHistoryAPI": true,
+  "requiredPermissions": ["time.query"]
+}

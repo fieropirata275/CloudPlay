@@ -1,0 +1,101 @@
+# Protocolos
+
+## 1. Señalización (WebSocket `/ws/signal/{session_id}`)
+
+`?role=client&token=<JWT>` o `?role=worker&token=<worker_token>`. El control plane solo **reenvía**
+mensajes entre los dos roles (vía Redis pub/sub, así funciona con varias réplicas de la API).
+
+| Mensaje | Dirección | Cuerpo |
+|---|---|---|
+| `peer-joined` | servidor → ambos | `{role}` — al conectar, y al conectarse el otro |
+| `peer-left` | servidor → ambos | `{role}` |
+| `offer` | worker → cliente | `{sdp}` — el **worker** ofrece siempre (sendonly) |
+| `answer` | cliente → worker | `{sdp}` |
+| `ice` | ambos | `{candidate, sdpMLineIndex}` |
+| `bye` | ambos | `{reason}` |
+| `session-state` | servidor → cliente | `{status, error}` — `failed` / `ended` desde el agente |
+
+Códigos de cierre: `4403` sesión inexistente o token inválido · `4409` otra conexión del mismo rol
+te ha sustituido (abriste la partida en otro dispositivo).
+
+Cada `peer-joined` del cliente hace que el worker **reconstruya el pipeline** y mande una offer nueva:
+así se puede saltar del móvil a la tele sin cerrar el juego.
+
+## 2. Canal de datos `input` (binario, `ordered=false`, `maxRetransmits=0`)
+
+Cada paquete es el **estado completo** de un mando, no un evento. Si se pierde uno, el siguiente
+corrige el estado (sin botones pegados). Los clientes reenvían el estado cada 100 ms como keepalive.
+
+### type = 1 · estado de mando (16 bytes, little endian)
+
+| off | tipo | campo | rango |
+|---|---|---|---|
+| 0 | u8 | type | `1` |
+| 1 | u8 | pad | 0..3 |
+| 2 | u16 | buttons | bitmask (tabla abajo) |
+| 4 | i16 | lx | -32768..32767 (negativo = izquierda) |
+| 6 | i16 | ly | negativo = arriba |
+| 8 | i16 | rx | |
+| 10 | i16 | ry | |
+| 12 | u8 | lt | 0..255 |
+| 13 | u8 | rt | 0..255 |
+| 14 | u16 | seq | contador con vuelta; el worker descarta paquetes con seq anterior |
+
+### type = 2 · Guide/Home (4 bytes)
+`[2, pad, pressed(0|1), 0]`
+
+### Bits de `buttons` (orden W3C "standard gamepad")
+
+| bit | botón | Xbox | PS2 | GameCube | Wii (Nunchuk) |
+|---|---|---|---|---|---|
+| 0 | A / sur | A | ✕ | A | A |
+| 1 | B / este | B | ○ | X | — |
+| 2 | X / oeste | X | □ | B | 1 |
+| 3 | Y / norte | Y | △ | Y | 2 |
+| 4 | LB | LB | L1 | — | C |
+| 5 | RB | RB | R1 | Z | — |
+| 6 | LT (digital) | LT | L2 | L | Z |
+| 7 | RT (digital) | RT | R2 | R | B |
+| 8 | Select | View | Select | — | − |
+| 9 | Start | Menu | Start | Start | + |
+| 10 | L3 | LS | L3 | — | — |
+| 11 | R3 | RS | R3 | — | shake |
+| 12-15 | D-pad ↑ ↓ ← → | | | | |
+
+Si el cliente no tiene gatillo analógico (táctil, mando de la tele) basta con el bit 6/7: el worker lo
+convierte en gatillo a fondo.
+
+El worker expone cada mando como un **Xbox 360 virtual** (`045e:028e`) por uinput, y los perfiles de
+PCSX2/Dolphin están mapeados sobre ese mando con SDL.
+
+## 3. Canal de datos `control` (JSON, fiable y ordenado)
+
+| `t` | Dirección | Efecto |
+|---|---|---|
+| `ping {ts}` → `pong {ts}` | cliente ↔ worker | RTT de aplicación |
+| `bitrate {kbps}` | cliente → worker | cambia el bitrate del encoder en caliente (1000..MAX) |
+| `keyframe` | cliente → worker | fuerza IDR |
+| `savestate` / `loadstate` / `nextslot` / `screenshot` | cliente → worker | atajo del emulador (xdotool) |
+| `quit` | cliente → worker | cierra el emulador limpiamente (vuelca memory cards) |
+| `hello {encoder, bitrate}` | worker → cliente | al abrir el canal |
+| `toast {text}` | worker → cliente | confirmación de acciones |
+| `bye {reason}` | worker → cliente | `emulator-exit`, errores de stream |
+
+### Bitrate adaptativo (en el cliente)
+
+Cada 2 s con `getStats()` del `inbound-rtp` de vídeo:
+- pérdida > 2 % → bitrate × 0,75
+- pérdida < 0,5 % y se está usando > 60 % del objetivo → +500 kbps
+- límites 2..20 Mbps; el usuario puede fijar una calidad manual desde el menú.
+
+## 4. Agente ↔ control plane (WebSocket `/ws/agent?token=<node_id>.<secret>`)
+
+| Mensaje | Dirección | Cuerpo |
+|---|---|---|
+| `hello` | agente → | `{gpu, capacity, platforms[], inventory[{platform,path}], sessions[]}` |
+| `heartbeat` | agente → | `{sessions[]}` cada 10 s |
+| `session_state` | agente → | `{session_id, status: running\|ended\|failed, error}` |
+| `start` | → agente | `{session_id, worker_token, signal_url, ice_servers, platform, rom_path, title, user_id}` |
+| `stop` | → agente | `{session_id}` |
+
+El `inventory` del `hello` da de alta automáticamente los juegos nuevos en el catálogo.
