@@ -113,12 +113,10 @@ curl -fsSL https://play.empresa.com/install/node.sh | sudo bash -s -- --join-tok
 ## Opción D · Kubernetes (Helm)
 
 ```bash
-docker build -t registro/cloudplay-control-plane:1.0.0 control-plane
-mkdir -p landing/out && docker build -f deploy/docker/web.Dockerfile -t registro/cloudplay-web:1.0.0 .
-helm install cloudplay deploy/helm/cloudplay -n cloudplay --create-namespace \
-  --set domain=play.empresa.com --set cloudflared.token=<TOKEN> \
-  --set turn.cloudflareKeyId=<KEY_ID> --set turn.cloudflareApiToken=<API_TOKEN> \
-  --set images.controlPlane=registro/cloudplay-control-plane:1.0.0 --set images.web=registro/cloudplay-web:1.0.0
+# Usa las imágenes públicas de GHCR de la última versión
+curl -fsSL https://github.com/fieropirata275/cloudplay/releases/latest/download/get.sh | bash -s -- \
+  helm --domain play.empresa.com --tunnel-token <TOKEN> \
+  --set turn.cloudflareKeyId=<KEY_ID> --set turn.cloudflareApiToken=<API_TOKEN>
 ```
 
 - API y web con 2 réplicas, *rolling updates* sin indisponibilidad (`maxUnavailable: 0`), PodDisruptionBudget
