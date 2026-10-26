@@ -18,3 +18,4 @@ tests/e2e/*.png
 landing/out/
 landing/.next/
 landing/node_modules/
+dist/

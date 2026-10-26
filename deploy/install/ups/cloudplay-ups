@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Integración con un SAI mediante NUT (upsmon). En /etc/nut/upsmon.conf:
+#   NOTIFYCMD /usr/local/bin/cloudplay-ups
+#   NOTIFYFLAG ONBATT  SYSLOG+EXEC
+#   NOTIFYFLAG ONLINE  SYSLOG+EXEC
+#   NOTIFYFLAG LOWBATT SYSLOG+EXEC
+#   NOTIFYFLAG FSD     SYSLOG+EXEC
+# Con batería: el nodo deja de aceptar partidas (las que hay siguen).
+# Batería baja / apagado forzado: cierra y guarda todas las partidas antes de que NUT apague la máquina.
+# Vuelve la luz: el nodo acepta partidas otra vez.
+set -u
+EVENT="${NOTIFYTYPE:-${1:-}}"
+logger -t cloudplay-ups "evento del SAI: $EVENT"
+case "$EVENT" in
+  ONBATT) /usr/local/bin/cloudplay drain ;;
+  ONLINE) /usr/local/bin/cloudplay resume ;;
+  LOWBATT|FSD|SHUTDOWN) /usr/local/bin/cloudplay stop-sessions ;;
+esac
+exit 0

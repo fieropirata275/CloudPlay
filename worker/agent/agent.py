@@ -2,8 +2,11 @@
 
 - Mantiene un WebSocket con el control plane (/ws/agent): hello + heartbeats + estado de sesiones.
 - Lanza un contenedor de sesión por partida (docker.sock), con GPU, uinput y slot de puertos/display.
-- Descarga las partidas guardadas del usuario de MinIO antes de arrancar y las sube al terminar.
+- Descarga las partidas guardadas del usuario del S3 (SeaweedFS o cualquier S3) antes de arrancar y las sube al terminar.
 - Al arrancar adopta los contenedores de sesión que siguieran vivos (reinicio del agente sin cortar partidas).
+- Alta automática con JOIN_TOKEN (plantillas de Proxmox, ISO, Kubernetes): pide su propio token y lo guarda.
+- Drenaje: con DATA_DIR/drain presente no recibe partidas nuevas (mantenimiento, SAI con batería baja...).
+- Autoguardado: sube cada AUTOSAVE_INTERVAL s una copia de las partidas, por si se va la luz a mitad de partida.
 """
 import asyncio
 import io
@@ -11,7 +14,12 @@ import json
 import logging
 import os
 import shutil
+import signal
+import socket
 import tarfile
+import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 import docker
@@ -25,7 +33,10 @@ log = logging.getLogger()
 
 E = os.environ
 CP_URL = E["CP_URL"].rstrip("/")  # wss://play.example.com
-NODE_TOKEN = E["NODE_TOKEN"]
+NODE_TOKEN = E.get("NODE_TOKEN", "").strip()
+JOIN_TOKEN = E.get("JOIN_TOKEN", "").strip()
+NODE_NAME = E.get("NODE_NAME", "").strip() or socket.gethostname()
+AUTOSAVE_INTERVAL = int(E.get("AUTOSAVE_INTERVAL", "300"))
 CAPACITY = int(E.get("CAPACITY", "2"))
 PLATFORMS = [p.strip() for p in E.get("PLATFORMS", "ps2,gc,wii").split(",") if p.strip()]
 GPU = E.get("GPU", "nvidia")  # nvidia | vaapi | cpu
@@ -56,16 +67,21 @@ ROM_EXT = {
 LABEL = "cloudplay.session"
 
 dk = docker.from_env()
-s3 = (
-    Minio(
-        S3_ENDPOINT.split("://")[-1],
-        access_key=E.get("S3_ACCESS_KEY"),
-        secret_key=E.get("S3_SECRET_KEY"),
-        secure=S3_ENDPOINT.startswith("https"),
-    )
-    if S3_ENDPOINT
-    else None
-)
+s3: Minio | None = None
+
+
+def init_s3(endpoint: str, access_key: str | None, secret_key: str | None, bucket: str | None = None) -> None:
+    """S3 de partidas: de worker.env o, si no está ahí, el que entrega el orquestador al dar de alta el nodo."""
+    global s3, S3_BUCKET
+    if not endpoint:
+        return
+    s3 = Minio(endpoint.split("://")[-1], access_key=access_key, secret_key=secret_key, secure=endpoint.startswith("https"))
+    if bucket:
+        S3_BUCKET = bucket
+    log.info("partidas guardadas en %s/%s", endpoint, S3_BUCKET)
+
+
+init_s3(S3_ENDPOINT, E.get("S3_ACCESS_KEY"), E.get("S3_SECRET_KEY"))
 
 
 def blocking(fn, *a, **kw):
@@ -88,15 +104,29 @@ def scan_library() -> list[dict]:
 
 
 # ------------------------------------------------------------------- saves
-def _save_key(user_id: str, platform: str) -> str:
-    return f"{user_id}/{SAVE_GROUP[platform]}.tar.gz"
+def _save_key(user_id: str, platform: str, auto: bool = False) -> str:
+    return f"{user_id}/{SAVE_GROUP[platform]}{'.autosave' if auto else ''}.tar.gz"
+
+
+def _newest_key(user_id: str, platform: str) -> str:
+    """La copia normal se sube al cerrar la partida; la autoguardada, durante. Si la autoguardada es más
+    nueva es que la última partida no terminó bien (apagón, nodo caído): se recupera desde ahí."""
+    best, when = _save_key(user_id, platform), None
+    for key in (_save_key(user_id, platform), _save_key(user_id, platform, auto=True)):
+        try:
+            t = s3.stat_object(S3_BUCKET, key).last_modified
+        except S3Error:
+            continue
+        if when is None or t > when:
+            best, when = key, t
+    return best
 
 
 def download_saves(user_id: str, platform: str, dest: Path) -> None:
     dest.mkdir(parents=True, exist_ok=True)
     if s3 is not None:
         try:
-            resp = s3.get_object(S3_BUCKET, _save_key(user_id, platform))
+            resp = s3.get_object(S3_BUCKET, _newest_key(user_id, platform))
             try:
                 data = resp.read()
             finally:
@@ -112,7 +142,7 @@ def download_saves(user_id: str, platform: str, dest: Path) -> None:
         os.chown(p, 1000, 1000)
 
 
-def upload_saves(user_id: str, platform: str, src: Path) -> None:
+def upload_saves(user_id: str, platform: str, src: Path, auto: bool = False) -> None:
     if s3 is None or not src.exists():
         return
     buf = io.BytesIO()
@@ -123,14 +153,73 @@ def upload_saves(user_id: str, platform: str, src: Path) -> None:
     buf.seek(0)
     if not s3.bucket_exists(S3_BUCKET):
         s3.make_bucket(S3_BUCKET)
-    s3.put_object(S3_BUCKET, _save_key(user_id, platform), buf, size, content_type="application/gzip")
-    log.info("partidas subidas para %s/%s (%d KB)", user_id, platform, size // 1024)
+    s3.put_object(S3_BUCKET, _save_key(user_id, platform, auto), buf, size, content_type="application/gzip")
+    log.info("partidas %s para %s/%s (%d KB)", "autoguardadas" if auto else "subidas", user_id, platform, size // 1024)
+
+
+# --------------------------------------------------------- alta automática
+TOKEN_FILE = DATA_DIR / "node.token"
+CONFIG_FILE = DATA_DIR / "node.json"
+DRAIN_FILE = DATA_DIR / "drain"
+STATUS_FILE = DATA_DIR / "status.json"
+
+
+def enroll() -> str:
+    """Pide al control plane un token propio para este nodo usando el token de unión compartido."""
+    base = CP_URL.replace("wss://", "https://").replace("ws://", "http://")
+    body = json.dumps({"join_token": JOIN_TOKEN, "name": NODE_NAME, "capacity": CAPACITY, "platforms": PLATFORMS}).encode()
+    req = urllib.request.Request(f"{base}/api/nodes/enroll", data=body, headers={"Content-Type": "application/json"}, method="POST")
+    with urllib.request.urlopen(req, timeout=15) as r:
+        resp = json.loads(r.read())
+    token = resp["token"]
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    TOKEN_FILE.write_text(token)
+    os.chmod(TOKEN_FILE, 0o600)
+    CONFIG_FILE.write_text(json.dumps({"s3": resp.get("s3")}))
+    os.chmod(CONFIG_FILE, 0o600)
+    apply_node_config()
+    log.info("nodo dado de alta como %s", NODE_NAME)
+    return token
+
+
+def apply_node_config() -> None:
+    if S3_ENDPOINT or not CONFIG_FILE.exists():
+        return  # lo de worker.env manda
+    try:
+        cfg = json.loads(CONFIG_FILE.read_text()).get("s3") or {}
+    except ValueError:
+        return
+    if cfg.get("endpoint"):
+        init_s3(cfg["endpoint"], cfg.get("access_key"), cfg.get("secret_key"), cfg.get("bucket"))
+
+
+def node_token(force_enroll: bool = False) -> str:
+    if NODE_TOKEN and not force_enroll:
+        return NODE_TOKEN
+    if TOKEN_FILE.exists() and not force_enroll:
+        apply_node_config()
+        return TOKEN_FILE.read_text().strip()
+    if not JOIN_TOKEN:
+        raise SystemExit("Falta NODE_TOKEN o JOIN_TOKEN en worker.env")
+    while True:
+        try:
+            return enroll()
+        except urllib.error.HTTPError as e:
+            if e.code in (401, 404):
+                raise SystemExit(f"El control plane rechaza el alta ({e.code}): revisa JOIN_TOKEN y CP_JOIN_TOKEN") from e
+            log.warning("alta fallida (%s), reintento en 15 s", e.code)
+        except Exception as e:  # noqa: BLE001
+            log.warning("control plane inalcanzable para el alta (%s), reintento en 15 s", e)
+        time.sleep(15)
 
 
 # ----------------------------------------------------------------- agente
 class Agent:
     def __init__(self):
         self.ws = None
+        self.token = node_token()
+        self.drain_sent: bool | None = None
+        self.last_autosave: dict[str, float] = {}
         self.slots: dict[int, str] = {}  # slot -> session_id
         self.meta: dict[str, dict] = {}  # session_id -> {user_id, platform, slot}
         self.stopping: set[str] = set()
@@ -290,11 +379,47 @@ class Agent:
         while True:
             await asyncio.sleep(10)
             await self.send({"type": "heartbeat", "sessions": list(self.meta)})
+            await self.sync_drain()
+            self.write_status()
+
+    # ------------------------------------------------- drenaje y estado local
+    async def sync_drain(self) -> None:
+        """El fichero DATA_DIR/drain manda: `cloudplay node drain` lo crea, `cloudplay node resume` lo borra."""
+        want = DRAIN_FILE.exists()
+        if self.ws is not None and want != self.drain_sent:
+            await self.send({"type": "drain", "on": want})
+            self.drain_sent = want
+
+    def write_status(self) -> None:
+        try:
+            STATUS_FILE.write_text(json.dumps({
+                "name": NODE_NAME, "connected": self.ws is not None, "draining": DRAIN_FILE.exists(),
+                "sessions": len(self.meta), "capacity": CAPACITY, "updated": int(time.time()),
+            }))
+        except OSError:
+            pass
+
+    async def autosave(self) -> None:
+        """Copia periódica de las partidas en curso (a una clave aparte, la normal solo se toca al cerrar)."""
+        if s3 is None or AUTOSAVE_INTERVAL <= 0:
+            return
+        t = time.time()
+        for sid, m in list(self.meta.items()):
+            if m.get("starting") or not m.get("user_id") or m.get("platform") not in SAVE_GROUP:
+                continue
+            if t - self.last_autosave.setdefault(sid, t) < AUTOSAVE_INTERVAL:
+                continue
+            self.last_autosave[sid] = t
+            try:
+                await blocking(upload_saves, m["user_id"], m["platform"], DATA_DIR / "sessions" / sid / "saves", True)
+            except Exception:  # noqa: BLE001
+                log.exception("autoguardado de %s", sid)
 
     async def reaper(self) -> None:
         while True:
             try:
                 await self.reap()
+                await self.autosave()
             except Exception:  # noqa: BLE001
                 log.exception("reap")
             await asyncio.sleep(3)
@@ -305,6 +430,14 @@ class Agent:
             asyncio.create_task(self.start(msg))
         elif t == "stop":
             asyncio.create_task(self.stop(msg.get("session_id", "")))
+        elif t == "drain":
+            # Drenado desde el panel: lo reflejamos en el fichero para que sobreviva a reinicios
+            on = bool(msg.get("on", True))
+            if on:
+                DRAIN_FILE.touch()
+            else:
+                DRAIN_FILE.unlink(missing_ok=True)
+            self.drain_sent = on
 
     async def run(self) -> None:
         asyncio.create_task(self.reaper())
@@ -312,25 +445,40 @@ class Agent:
         backoff = 1
         while True:
             try:
-                async with websockets.connect(f"{CP_URL}/ws/agent?token={NODE_TOKEN}", ping_interval=20, max_size=2**22) as ws:
+                async with websockets.connect(f"{CP_URL}/ws/agent?token={self.token}", ping_interval=20, max_size=2**22) as ws:
                     self.ws, backoff = ws, 1
+                    self.drain_sent = None
                     inventory = await blocking(scan_library)
                     await self.send({
                         "type": "hello", "gpu": GPU, "capacity": CAPACITY, "platforms": PLATFORMS,
                         "inventory": inventory, "sessions": list(self.meta),
                     })
                     log.info("conectado al control plane (%d juegos en librería)", len(inventory))
+                    await self.sync_drain()
+                    self.write_status()
                     async for raw in ws:
                         try:
                             await self.handle(json.loads(raw))
                         except ValueError:
                             pass
+            except (websockets.InvalidStatusCode, websockets.InvalidStatus) as e:
+                # 403 en el saludo: el token ya no vale (nodo borrado en el panel). Con JOIN_TOKEN nos damos de alta otra vez.
+                code = getattr(e, "status_code", None) or getattr(getattr(e, "response", None), "status_code", None)
+                if code == 403 and JOIN_TOKEN and not NODE_TOKEN:
+                    log.warning("token rechazado: volviendo a dar de alta el nodo")
+                    self.token = await blocking(node_token, True)
+                else:
+                    log.warning("conexión rechazada: %s (reintento en %ss)", e, backoff)
             except Exception as e:  # noqa: BLE001
                 log.warning("conexión perdida: %s (reintento en %ss)", e, backoff)
             self.ws = None
+            self.write_status()
             await asyncio.sleep(backoff)
             backoff = min(backoff * 2, 30)
 
 
 if __name__ == "__main__":
+    # SIGTERM (docker stop, apagado): salimos sin tocar las partidas. Los contenedores de sesión siguen vivos
+    # y el agente los adopta al volver; si el host se apaga, el autoguardado conserva el progreso.
+    signal.signal(signal.SIGTERM, lambda *_: os._exit(0))
     asyncio.run(Agent().run())

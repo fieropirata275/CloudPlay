@@ -1,11 +1,15 @@
-# Nodo worker. Requisitos en el host: Docker, módulo uinput cargado y
-# nvidia-container-toolkit (GPU=nvidia) o /dev/dri (GPU=vaapi).
-#   docker build -t cloudplay/session:latest ./session
+# Nodo gaming. Requisitos en el host: Docker, módulo uinput cargado y
+# nvidia-container-toolkit (GPU=nvidia) o /dev/dri (GPU=vaapi). El instalador lo deja todo listo:
+#   curl -fsSL https://play.example.com/install/node.sh | sudo bash -s -- --join-token TOKEN
+# A mano:
+#   docker build -t cloudplay/session:local ./session
 #   cp worker.env.example worker.env && docker compose up -d --build
 services:
   agent:
     build: ./agent
-    restart: unless-stopped
+    image: cloudplay/agent:${CLOUDPLAY_TAG:-local}
+    # Tras un apagón vuelve solo y adopta las partidas que sigan vivas
+    restart: always
     env_file: worker.env
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock

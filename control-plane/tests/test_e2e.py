@@ -189,3 +189,69 @@ def test_leads(client):
     assert rows[-1]["email"] == "laura@cliente.es" and rows[-1]["company"] == "Bar Retro"
     assert not any(r["name"] == "Bot" for r in rows)
     assert client.get("/api/admin/leads").status_code == 401
+
+
+def _admin(client):
+    tok = client.post("/api/auth/login", json={"email": "admin@test.local", "password": "supersecret"}).json()["access_token"]
+    return {"Authorization": f"Bearer {tok}"}
+
+
+def test_ready(client):
+    assert client.get("/api/ready").json() == {"ok": True}
+
+
+def test_enroll_and_drain(client, monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "join_token", "j" * 32)
+    bad = client.post("/api/nodes/enroll", json={"join_token": "x" * 32, "name": "auto-01"})
+    assert bad.status_code == 401
+    r = client.post("/api/nodes/enroll", json={"join_token": "j" * 32, "name": "auto-01", "capacity": 3, "platforms": ["ps2"]})
+    assert r.status_code == 201 and r.json()["token"].startswith(r.json()["id"] + ".")
+    # reinstalar la misma máquina: mismo nodo, token nuevo
+    r2 = client.post("/api/nodes/enroll", json={"join_token": "j" * 32, "name": "auto-01", "capacity": 3, "platforms": ["ps2"]})
+    assert r2.json()["rejoined"] and r2.json()["id"] == r.json()["id"] and r2.json()["token"] != r.json()["token"]
+
+    h = _admin(client)
+    nid = r.json()["id"]
+    with client.websocket_connect(f"/ws/agent?token={r2.json()['token']}") as ws:
+        ws.send_json({"type": "hello", "gpu": "cpu", "capacity": 3, "platforms": ["ps2"], "inventory": [], "sessions": []})
+        time.sleep(0.2)
+        node = [n for n in client.get("/api/admin/nodes", headers=h).json() if n["id"] == nid][0]
+        assert node["status"] == "online" and node["draining"] is False
+        assert client.post(f"/api/admin/nodes/{nid}/drain", json={"on": True}, headers=h).json()["draining"] is True
+        assert recv_until(ws, "drain")["on"] is True
+        # un nodo drenando no recibe partidas
+        import asyncio
+        from app.db import SessionLocal
+        from app.scheduler import pick_node
+
+        async def pick():
+            async with SessionLocal() as db:
+                n = await pick_node(db, "ps2")
+                return n.id if n else None
+
+        assert asyncio.run(pick()) != nid
+        # el propio agente puede pedir salir del drenaje
+        ws.send_json({"type": "drain", "on": False})
+        time.sleep(0.2)
+        node = [n for n in client.get("/api/admin/nodes", headers=h).json() if n["id"] == nid][0]
+        assert node["draining"] is False
+
+
+def test_cloudflare_turn(monkeypatch):
+    import asyncio
+    from app import turn
+    from app.config import settings
+    from app.security import ice_servers
+
+    fake = {"iceServers": [{"urls": "stun:stun.cloudflare.com:3478"}, {"urls": [
+        "turn:turn.cloudflare.com:3478?transport=udp", "turn:turn.cloudflare.com:53?transport=udp",
+        "turns:turn.cloudflare.com:443?transport=tcp"], "username": "u", "credential": "c"}]}
+    monkeypatch.setattr(settings, "turn_provider", "cloudflare")
+    monkeypatch.setattr(turn, "_fetch", lambda: turn._clean(fake["iceServers"]))
+    assert asyncio.run(turn.refresh_once())
+    s = ice_servers("user-x")
+    assert s[0]["urls"] == ["stun:stun.cloudflare.com:3478"]
+    assert all(":53" not in u for u in s[1]["urls"]) and s[1]["username"] == "u"
+    turn._cache.update(servers=[], expires=0)

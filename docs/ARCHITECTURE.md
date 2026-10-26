@@ -13,7 +13,7 @@ flowchart LR
     API[FastAPI<br/>auth · catálogo · sesiones<br/>scheduler · señalización]
     PG[(Postgres)]
     R[(Redis<br/>pub/sub · device codes)]
-    S3[(MinIO<br/>partidas)]
+    S3[(S3 SeaweedFS<br/>partidas)]
     TURN[coturn]
   end
 
@@ -53,7 +53,7 @@ sequenceDiagram
   API->>API: scheduler: nodo online con menos carga<br/>(lock advisory en Postgres)<br/>si no hay hueco: cola FIFO + dispatcher cada 2 s
   API-->>AG: start (vía Redis node:{id})
   API-->>C: {signal_url, ice_servers}
-  AG->>AG: baja partidas de MinIO
+  AG->>AG: baja partidas del S3
   AG->>S: docker run (GPU, uinput, slot de puertos/display)
   AG-->>API: session_state running
   C->>API: WS /ws/signal ?role=client
@@ -66,7 +66,7 @@ sequenceDiagram
   C->>API: DELETE /api/sessions/{id}
   API-->>AG: stop
   AG->>S: docker stop (el emulador vuelca memcards)
-  AG->>AG: sube partidas a MinIO
+  AG->>AG: sube partidas al S3
   AG-->>API: session_state ended
 ```
 

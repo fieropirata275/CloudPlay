@@ -79,11 +79,18 @@ def _split(v: str) -> list[str]:
 
 
 def ice_servers(identity: str) -> list[dict]:
-    """Credenciales TURN efímeras (draft-uberti-behave-turn-rest), compatibles con coturn use-auth-secret."""
+    """Credenciales TURN efímeras (draft-uberti-behave-turn-rest), compatibles con coturn use-auth-secret.
+    Con CP_TURN_PROVIDER=cloudflare se devuelven las del TURN de Cloudflare (las renueva app.turn)."""
+    from . import turn
+
+    if settings.turn_provider == "cloudflare":
+        cached = turn.cached()
+        if cached:
+            return cached
     servers: list[dict] = []
     if settings.stun_urls:
         servers.append({"urls": _split(settings.stun_urls)})
-    if settings.turn_urls and settings.turn_secret:
+    if settings.turn_provider == "coturn" and settings.turn_urls and settings.turn_secret:
         username = f"{int(time.time()) + settings.turn_ttl}:{identity}"
         digest = hmac.new(settings.turn_secret.encode(), username.encode(), hashlib.sha1).digest()
         servers.append(

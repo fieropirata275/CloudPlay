@@ -1,0 +1,117 @@
+{
+  "name": "CloudPlay · Autoescalado de nodos en Proxmox",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "d3e52aa4-5b09-54c4-aa04-bc1a51acab7f",
+      "name": "Cada minuto",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "5d3b6f8f-6044-5ec7-88f8-491bdaade43c",
+      "name": "Probar ahora",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ⚙️ Edita estos valores (o usa variables de entorno de n8n con $env si las tienes permitidas)\nreturn [{\n  json: {\n    // CloudPlay\n    cloudplayUrl: \"https://play.example.com\",\n    adminEmail: \"admin@example.com\",\n    adminPassword: \"CAMBIA_ESTO\",\n    // Proxmox: crea un API token (Datacenter → Permissions → API Tokens) con permisos VM.Clone, VM.Allocate,\n    // VM.PowerMgmt, VM.Config.* y Datastore.AllocateSpace sobre el pool/almacenamiento de las VMs\n    proxmoxUrl: \"https://proxmox.example.com:8006\",\n    proxmoxToken: \"root@pam!cloudplay=00000000-0000-0000-0000-000000000000\",\n    proxmoxNode: \"pve\",\n    proxmoxInsecureTls: true,           // certificado autofirmado de Proxmox\n    templateId: 9100,                   // la de deploy/proxmox/cloudplay-pve.sh node-template\n    vmPrefix: \"cloudplay-node\",\n    // Reglas de escalado\n    minNodes: 1,                        // nunca menos de estos nodos encendidos\n    maxNodes: 6,                        // ni más de estos\n    minFreeSlots: 2,                    // huecos libres que queremos tener siempre (colchón para picos)\n    // Aviso opcional (Slack, Discord, Teams, Telegram via webhook...). Vacío = sin avisos\n    webhookUrl: \"\",\n  },\n}];\n"
+      },
+      "id": "3c89f6ed-bb0a-5548-b228-c66c6f9dd512",
+      "name": "Configuración",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Autoescalado de nodos gaming de CloudPlay en Proxmox, sin cortar partidas:\n//  · Sube: si hay gente en cola o quedan menos huecos libres de los que quieres, clona la plantilla y la arranca.\n//    El nodo nuevo se da de alta solo (token de unión) y aparece en el panel en unos minutos.\n//  · Baja: si sobra capacidad, DRENA un nodo vacío (no recibe partidas nuevas). En la siguiente pasada,\n//    si sigue vacío, apaga y borra su VM. Nunca se apaga un nodo con partidas.\nconst c = $input.first().json;\nconst http = (opts) => this.helpers.httpRequest({ json: true, timeout: 20000, ...opts });\nconst wait = (ms) => new Promise((r) => setTimeout(r, ms));\nconst log = [];\n\n// ---------------------------------------------------------------- CloudPlay\nconst login = await http({ method: \"POST\", url: `${c.cloudplayUrl}/api/auth/login`, body: { email: c.adminEmail, password: c.adminPassword } });\nconst cp = (method, path, body) =>\n  http({ method, url: `${c.cloudplayUrl}${path}`, body, headers: { Authorization: `Bearer ${login.access_token}` } });\nconst stats = await cp(\"GET\", \"/api/admin/stats\");\nconst nodes = await cp(\"GET\", \"/api/admin/nodes\");\n\n// ---------------------------------------------------------------- Proxmox\nconst pveHeaders = { Authorization: `PVEAPIToken=${c.proxmoxToken}` };\nconst pve = (method, path, body) =>\n  http({ method, url: `${c.proxmoxUrl}/api2/json${path}`, body, headers: pveHeaders, skipSslCertificateValidation: !!c.proxmoxInsecureTls }).then((r) => r.data);\nconst waitTask = async (upid) => {\n  for (let i = 0; i < 90; i++) {\n    const st = await pve(\"GET\", `/nodes/${c.proxmoxNode}/tasks/${encodeURIComponent(upid)}/status`);\n    if (st.status === \"stopped\") {\n      if (st.exitstatus && st.exitstatus !== \"OK\") throw new Error(`Tarea de Proxmox falló: ${st.exitstatus}`);\n      return;\n    }\n    await wait(2000);\n  }\n  throw new Error(\"La tarea de Proxmox tarda demasiado\");\n};\nconst vms = (await pve(\"GET\", `/nodes/${c.proxmoxNode}/qemu`)).filter((v) => v.name && v.name.startsWith(c.vmPrefix + \"-\") && !v.template);\n\nconst online = nodes.filter((n) => n.status === \"online\");\nconst free = stats.capacity_online - stats.placed;\nconst byName = Object.fromEntries(nodes.map((n) => [n.name, n]));\n// VMs encendidas que aún no se han dado de alta: están arrancando (instalación, driver...). Mientras haya alguna, no clonamos más.\nconst booting = vms.filter((v) => v.status === \"running\" && !(byName[v.name] && byName[v.name].status === \"online\"));\n\nlet action = \"nada\";\nlet reason = `libres ${free}, en cola ${stats.queued}, nodos ${online.length}`;\n\n// 1) Retirar VMs de nodos drenados que ya están vacíos\nfor (const n of nodes.filter((x) => x.draining && x.load === 0)) {\n  const vm = vms.find((v) => v.name === n.name);\n  if (!vm) continue;\n  if (vm.status === \"running\") await waitTask(await pve(\"POST\", `/nodes/${c.proxmoxNode}/qemu/${vm.vmid}/status/shutdown`, { timeout: 120, forceStop: 1 }));\n  await waitTask(await pve(\"DELETE\", `/nodes/${c.proxmoxNode}/qemu/${vm.vmid}?purge=1&destroy-unreferenced-disks=1`));\n  await cp(\"DELETE\", `/api/admin/nodes/${n.id}`);\n  log.push(`retirado ${n.name} (VM ${vm.vmid})`);\n  action = \"retirar\";\n}\n\n// 2) Subir capacidad\nconst needUp = stats.queued > 0 || free < c.minFreeSlots || online.length < c.minNodes;\nif (action === \"nada\" && needUp) {\n  // Antes de clonar, si hay un nodo drenando con hueco, lo devolvemos al servicio (más rápido que una VM nueva)\n  const drained = nodes.find((n) => n.draining && n.status === \"online\");\n  if (drained) {\n    await cp(\"POST\", `/api/admin/nodes/${drained.id}/drain`, { on: false });\n    action = \"reactivar\"; log.push(`reactivado ${drained.name}`);\n  } else if (booting.length) {\n    action = \"esperar\"; log.push(`esperando a ${booting.map((v) => v.name).join(\", \")}`);\n  } else if (vms.length >= c.maxNodes) {\n    action = \"tope\"; log.push(`ya hay ${vms.length} VMs (máximo ${c.maxNodes})`);\n  } else {\n    const newid = Number(await pve(\"GET\", \"/cluster/nextid\"));\n    const name = `${c.vmPrefix}-${newid}`;\n    await waitTask(await pve(\"POST\", `/nodes/${c.proxmoxNode}/qemu/${c.templateId}/clone`, { newid, name, full: 1 }));\n    await waitTask(await pve(\"POST\", `/nodes/${c.proxmoxNode}/qemu/${newid}/status/start`));\n    action = \"subir\"; log.push(`clonado y arrancado ${name} (VM ${newid})`);\n  }\n}\n\n// 3) Bajar capacidad: drenar un nodo vacío si, sin él, seguimos con el colchón y el mínimo de nodos\nif (action === \"nada\" && !needUp) {\n  const idle = online\n    .filter((n) => !n.draining && n.load === 0 && vms.some((v) => v.name === n.name))\n    .sort((a, b) => a.capacity - b.capacity)[0];\n  if (idle && free - idle.capacity >= c.minFreeSlots && online.length - 1 >= c.minNodes) {\n    await cp(\"POST\", `/api/admin/nodes/${idle.id}/drain`, { on: true });\n    action = \"bajar\"; log.push(`drenado ${idle.name}: se apagará en la próxima pasada si sigue vacío`);\n  }\n}\n\n// 4) Nodos caídos: aviso\nconst offline = nodes.filter((n) => n.status !== \"online\" && !n.draining).map((n) => n.name);\nif (c.webhookUrl && (action !== \"nada\" && action !== \"esperar\" || offline.length)) {\n  const text = `CloudPlay · ${action}: ${log.join(\"; \") || reason}${offline.length ? ` · sin conexión: ${offline.join(\", \")}` : \"\"}`;\n  await http({ method: \"POST\", url: c.webhookUrl, body: { text, content: text } }).catch(() => null);\n}\n\nreturn [{ json: { action, reason, detail: log, stats, offline } }];\n"
+      },
+      "id": "77dc2dae-1436-583c-94fe-94582035faf7",
+      "name": "Autoescalado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "width": 620,
+        "height": 220,
+        "content": "## CloudPlay · Autoescalado sin cortes\n1. Edita **Configuración** (URL de CloudPlay y de Proxmox, token, plantilla y reglas).\n2. Pulsa **Probar ahora** para ver qué haría.\n3. Activa el workflow: cada minuto sube nodos si hay cola o faltan huecos, y drena y apaga los que sobran **sin cortar ninguna partida**.\n\nLa plantilla se crea con `deploy/proxmox/cloudplay-pve.sh node-template`."
+      },
+      "id": "6da79893-0b18-51aa-8b19-c21648e16247",
+      "name": "Nota",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -260
+      ]
+    }
+  ],
+  "connections": {
+    "Cada minuto": {
+      "main": [
+        [
+          {
+            "node": "Configuración",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Probar ahora": {
+      "main": [
+        [
+          {
+            "node": "Configuración",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configuración": {
+      "main": [
+        [
+          {
+            "node": "Autoescalado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "pinData": {}
+}

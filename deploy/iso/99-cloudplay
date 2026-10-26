@@ -1,0 +1,12 @@
+#!/bin/sh
+# Mensaje al entrar por SSH o consola
+echo
+echo "  CloudPlay · $(cat /etc/cloudplay/role 2>/dev/null || echo instalando)"
+if [ -f /etc/cloudplay/firstboot.args ] || systemctl is-active --quiet cloudplay-firstboot 2>/dev/null; then
+  echo "  Instalando CloudPlay… sigue el progreso con: sudo journalctl -fu cloudplay-firstboot"
+else
+  echo "  sudo cloudplay status        estado"
+  echo "  sudo cloudplay credentials   URL, administrador y token de unión"
+  echo "  Si algo falló: sudo bash -c 'eval set -- \$(cat /root/.cloudplay-install.args); bash /opt/cloudplay-src/deploy/install/install.sh \"\$@\"'"
+fi
+echo

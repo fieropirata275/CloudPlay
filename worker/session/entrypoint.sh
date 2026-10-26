@@ -12,7 +12,7 @@ mkdir -p "$RUNTIME" /dev/input /tmp/.X11-unix
 chown player:player "$RUNTIME" && chmod 700 "$RUNTIME"
 chmod 1777 /tmp/.X11-unix
 
-# Partidas: el agente monta /saves (sincronizado con MinIO)
+# Partidas: el agente monta /saves (sincronizado con el S3 de partidas)
 mkdir -p /saves/ps2/memcards /saves/ps2/sstates /saves/dolphin/GC /saves/dolphin/Wii /saves/dolphin/StateSaves
 chown -R player:player /saves
 

@@ -1,38 +1,66 @@
-# Control plane: API + Postgres + Redis + MinIO (partidas guardadas) + coturn + Caddy (TLS + cliente web)
-# Uso: cp .env.example .env && docker compose up -d --build
+# Orquestador de CloudPlay: API (2 réplicas) + Postgres + Redis + S3 (SeaweedFS) + Caddy
+# y, según COMPOSE_PROFILES, coturn (TURN propio) y cloudflared (Cloudflare Tunnel).
+#
+# Lo normal es no tocar esto a mano: `sudo ./deploy/install/install.sh --role orchestrator ...` lo configura todo
+# y el comando `cloudplay` lo opera (estado, actualizaciones sin cortes, copias, túnel...).
+#
+# Arranque manual: cp .env.example .env && docker compose up -d --build
+x-api: &api
+  build: ./control-plane
+  image: cloudplay/control-plane:${CLOUDPLAY_TAG:-local}
+  restart: always
+  env_file: .env
+  environment:
+    CP_DATABASE_URL: postgresql+asyncpg://cloudplay:${POSTGRES_PASSWORD}@postgres:5432/cloudplay
+    CP_REDIS_URL: redis://redis:6379/0
+    CP_PUBLIC_URL: https://${CP_DOMAIN}
+    CP_STUN_URLS: ${CP_STUN_URLS:-stun:${CP_DOMAIN}:3478}
+    CP_TURN_URLS: ${CP_TURN_URLS:-turn:${CP_DOMAIN}:3478?transport=udp,turn:${CP_DOMAIN}:3478?transport=tcp,turns:${CP_DOMAIN}:5349?transport=tcp}
+    CP_TURN_SECRET: ${TURN_SECRET}
+  depends_on:
+    postgres: { condition: service_healthy }
+    redis: { condition: service_healthy }
+  healthcheck:
+    test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/ready', timeout=3).status == 200 else 1)"]
+    interval: 10s
+    timeout: 5s
+    retries: 3
+    start_period: 20s
+  stop_grace_period: 30s
+  networks:
+    default:
+      # Nombre común de las dos réplicas (lo usa un nodo gaming en la misma máquina: ws://api:8000)
+      aliases: [api]
+
 services:
+  # Dos réplicas de la API: `cloudplay update` las renueva de una en una y Caddy reparte entre las sanas,
+  # así que actualizar no corta el servicio. La planificación ya está serializada entre réplicas (advisory lock).
+  api-a: *api
+  api-b: *api
+
   caddy:
     image: caddy:2.8
-    restart: unless-stopped
+    restart: always
     ports: ["80:80", "443:443", "443:443/udp"]
     environment:
       CP_DOMAIN: ${CP_DOMAIN}
-      LANDING_DOMAIN: ${LANDING_DOMAIN:-landing.localhost}
+      # Con Cloudflare Tunnel el TLS lo pone Cloudflare: Caddy sirve HTTP (CP_SITE=http://play.example.com)
+      CP_SITE: ${CP_SITE:-${CP_DOMAIN}}
+      LANDING_SITE: ${LANDING_SITE:-${LANDING_DOMAIN:-landing.localhost}}
     volumes:
       - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - ./clients/web:/srv/web:ro
       - ./landing/out:/srv/landing:ro
+      # Instalador de nodos que sirve el propio orquestador (/install/node.sh)
+      - ${CLOUDPLAY_DIST:-./dist}:/srv/dist:ro
       - caddy_data:/data
-    depends_on: [api]
-
-  api:
-    build: ./control-plane
-    restart: unless-stopped
-    env_file: .env
-    environment:
-      CP_DATABASE_URL: postgresql+asyncpg://cloudplay:${POSTGRES_PASSWORD}@postgres:5432/cloudplay
-      CP_REDIS_URL: redis://redis:6379/0
-      CP_PUBLIC_URL: https://${CP_DOMAIN}
-      CP_STUN_URLS: stun:${CP_DOMAIN}:3478
-      CP_TURN_URLS: turn:${CP_DOMAIN}:3478?transport=udp,turn:${CP_DOMAIN}:3478?transport=tcp,turns:${CP_DOMAIN}:5349?transport=tcp
-      CP_TURN_SECRET: ${TURN_SECRET}
     depends_on:
-      postgres: { condition: service_healthy }
-      redis: { condition: service_started }
+      api-a: { condition: service_healthy }
+      api-b: { condition: service_started }
 
   postgres:
     image: postgres:16-alpine
-    restart: unless-stopped
+    restart: always
     environment:
       POSTGRES_DB: cloudplay
       POSTGRES_USER: cloudplay
@@ -42,27 +70,46 @@ services:
       test: ["CMD-SHELL", "pg_isready -U cloudplay"]
       interval: 5s
       retries: 10
+    # Tras un apagón Postgres se recupera solo con su WAL; le damos tiempo a cerrar limpio al parar
+    stop_grace_period: 60s
 
   redis:
     image: redis:7-alpine
-    restart: unless-stopped
+    restart: always
     command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
 
-  minio:
-    image: minio/minio:latest
-    restart: unless-stopped
-    command: server /data --console-address :9001
+  # Partidas guardadas de los jugadores (API S3). SeaweedFS (Apache-2.0): las imágenes de MinIO
+  # dejaron de publicarse en Docker Hub. Los nodos llegan por S3_BIND:8333 o por s3.<dominio> en el túnel.
+  s3:
+    image: chrislusf/seaweedfs:4.45
+    restart: always
     environment:
-      MINIO_ROOT_USER: ${S3_ACCESS_KEY}
-      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY}
-    # Los workers suben/bajan partidas aquí. Expón solo hacia la red de los workers (VPN/LAN).
-    ports: ["${S3_BIND:-127.0.0.1}:9000:9000"]
-    volumes: [minio_data:/data]
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        printf '{"identities":[{"name":"cloudplay","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write","List","Tagging"]}]}'
+        "$$S3_ACCESS_KEY" "$$S3_SECRET_KEY" > /tmp/s3.json &&
+        exec weed server -dir=/data -ip.bind=0.0.0.0 -master.volumeSizeLimitMB=1024 -volume.max=0
+        -s3 -s3.port=8333 -s3.config=/tmp/s3.json
+    ports: ["${S3_BIND:-127.0.0.1}:8333:8333"]
+    volumes: [s3_data:/data]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9333/cluster/status || exit 1"]
+      interval: 10s
+      retries: 10
 
+  # TURN propio (perfil "coturn"). Con Cloudflare Tunnel usa el TURN de Cloudflare y no abras puertos.
   coturn:
+    profiles: ["coturn"]
     image: coturn/coturn:4.6
-    restart: unless-stopped
-    network_mode: host   # rango UDP de relay sin NAT de Docker
+    restart: always
+    network_mode: host
     volumes:
       - ./deploy/coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
     command:
@@ -72,7 +119,21 @@ services:
       - --realm=${CP_DOMAIN}
       - --external-ip=${PUBLIC_IP}
 
+  # Cloudflare Tunnel (perfil "tunnel"): publica el orquestador sin abrir puertos ni IP fija.
+  # Dos conectores para alta disponibilidad: si uno cae o se corta la conexión, el otro sigue sirviendo.
+  cloudflared:
+    profiles: ["tunnel"]
+    image: cloudflare/cloudflared:2026.9.3
+    restart: always
+    command: ["tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:2000", "run"]
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN}
+    deploy:
+      replicas: 2
+    depends_on:
+      caddy: { condition: service_started }
+
 volumes:
   caddy_data:
   pg_data:
-  minio_data:
+  s3_data:

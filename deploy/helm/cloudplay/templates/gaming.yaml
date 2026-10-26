@@ -1,0 +1,50 @@
+{{- if .Values.gaming.enabled }}
+# Un agente por cada nodo de Kubernetes con la etiqueta cloudplay.io/gaming=true. Se da de alta solo con el
+# token de unión y lanza las partidas como contenedores Docker del host (red del host, GPU y /dev/uinput).
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "cp.name" . }}-gaming
+  labels: {{- include "cp.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels: {{- include "cp.sel" (list $ "gaming") | nindent 6 }}
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 1 }
+  template:
+    metadata:
+      labels: {{- include "cp.sel" (list $ "gaming") | nindent 8 }}
+    spec:
+      nodeSelector: {{- toYaml .Values.gaming.nodeSelector | nindent 8 }}
+      # Al actualizar el agente las partidas siguen: viven en contenedores del host y el agente nuevo las adopta
+      terminationGracePeriodSeconds: 10
+      containers:
+        - name: agent
+          image: {{ .Values.images.agent }}
+          imagePullPolicy: {{ $.Values.images.pullPolicy }}
+          env:
+            - { name: CP_URL, value: "ws://{{ include "cp.name" . }}-api:8000" }
+            - { name: JOIN_TOKEN, valueFrom: { secretKeyRef: { name: {{ include "cp.name" . }}, key: joinToken } } }
+            - { name: NODE_NAME, valueFrom: { fieldRef: { fieldPath: spec.nodeName } } }
+            - { name: GPU, value: {{ .Values.gaming.gpu | quote }} }
+            - { name: CAPACITY, value: {{ .Values.gaming.capacity | quote }} }
+            - { name: PLATFORMS, value: {{ .Values.gaming.platforms | quote }} }
+            - { name: LIBRARY_DIR, value: {{ .Values.gaming.libraryPath | quote }} }
+            - { name: BIOS_DIR, value: {{ .Values.gaming.biosPath | quote }} }
+            - { name: DATA_DIR, value: {{ .Values.gaming.dataPath | quote }} }
+            - { name: SESSION_IMAGE, value: {{ .Values.gaming.sessionImage | quote }} }
+            - { name: S3_ENDPOINT, value: "http://{{ include "cp.name" . }}-s3:8333" }
+            - { name: S3_ACCESS_KEY, valueFrom: { secretKeyRef: { name: {{ include "cp.name" . }}, key: s3AccessKey } } }
+            - { name: S3_SECRET_KEY, valueFrom: { secretKeyRef: { name: {{ include "cp.name" . }}, key: s3SecretKey } } }
+          volumeMounts:
+            - { name: docker, mountPath: /var/run/docker.sock }
+            - { name: data, mountPath: {{ .Values.gaming.dataPath }} }
+            - { name: library, mountPath: /library, readOnly: true }
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+      volumes:
+        - { name: docker, hostPath: { path: /var/run/docker.sock, type: Socket } }
+        - { name: data, hostPath: { path: {{ .Values.gaming.dataPath }}, type: DirectoryOrCreate } }
+        - { name: library, hostPath: { path: {{ .Values.gaming.libraryPath }}, type: DirectoryOrCreate } }
+{{- end }}

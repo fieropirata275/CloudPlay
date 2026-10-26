@@ -1,11 +1,38 @@
-{$CP_DOMAIN} {
+# CP_SITE es el dominio (TLS automático de Let's Encrypt) o, detrás de Cloudflare Tunnel,
+# "http://dominio" (Cloudflare pone el TLS y el túnel llega a Caddy por HTTP).
+(api_upstream) {
+	# Dos réplicas: si una se está actualizando o cae, Caddy reintenta en la otra
+	reverse_proxy api-a:8000 api-b:8000 {
+		lb_policy round_robin
+		lb_try_duration 15s
+		lb_try_interval 250ms
+		fail_duration 10s
+		health_uri /api/ready
+		health_interval 2s
+		health_timeout 2s
+		# Una réplica que se está apagando no debe hacer esperar: se salta enseguida a la otra
+		transport http {
+			dial_timeout 1s
+		}
+	}
+}
+
+{$CP_SITE} {
 	encode zstd gzip
 
 	handle /api/* {
-		reverse_proxy api:8000
+		import api_upstream
 	}
 	handle /ws/* {
-		reverse_proxy api:8000
+		import api_upstream
+	}
+
+	# Instalador de nodos gaming que sirve el propio orquestador:
+	#   curl -fsSL https://play.example.com/install/node.sh | sudo bash -s -- --join-token XXX
+	handle_path /install/* {
+		root * /srv/dist
+		file_server
+		header Cache-Control "no-store"
 	}
 
 	# Cliente web (también es la base de las apps de Tizen y webOS)
@@ -25,11 +52,11 @@
 
 # Landing comercial (Next.js exportado a estático). Construir antes:
 #   cd landing && npm ci && NEXT_PUBLIC_SITE_URL=https://$LANDING_DOMAIN npm run build
-{$LANDING_DOMAIN:landing.localhost} {
+{$LANDING_SITE:landing.localhost} {
 	encode zstd gzip
 	# El formulario de demo envía al mismo origen; solo este endpoint llega a la API
 	handle /api/leads {
-		reverse_proxy api:8000
+		import api_upstream
 	}
 	handle {
 		root * /srv/landing

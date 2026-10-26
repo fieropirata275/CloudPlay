@@ -24,7 +24,12 @@ async def pick_node(db: AsyncSession, platform: str) -> Node | None:
     q = (
         select(Node, func.coalesce(load.c.n, 0).label("load"))
         .outerjoin(load, load.c.node_id == Node.id)
-        .where(Node.status == "online", Node.last_seen >= cutoff, Node.platforms.like(f"%,{platform},%"))
+        .where(
+            Node.status == "online",
+            Node.draining.is_(False),
+            Node.last_seen >= cutoff,
+            Node.platforms.like(f"%,{platform},%"),
+        )
         .order_by(func.coalesce(load.c.n, 0) * 1.0 / Node.capacity, Node.name)
     )
     for node, n in (await db.execute(q)).all():

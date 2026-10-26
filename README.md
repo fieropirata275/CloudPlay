@@ -11,14 +11,15 @@ clientes ──WebRTC (H.264/Opus + input)──▶ nodos GPU (un contenedor por
 | Carpeta | Qué es |
 |---|---|
 | `control-plane/` | API FastAPI: auth (+ login por código para teles), catálogo, sesiones, scheduler, señalización WebRTC, agentes |
-| `worker/agent/` | Agente de nodo: lanza/para contenedores de sesión, GPUs, slots, partidas en MinIO, autocatálogo |
+| `worker/agent/` | Agente de nodo: alta automática, lanza/para contenedores de sesión, GPUs, slots, partidas guardadas en S3 con autoguardado, drenaje |
 | `worker/session/` | Imagen de sesión: Xvfb + VirtualGL + PCSX2/Dolphin + streamer GStreamer (NVENC/VA-API/x264) + mando virtual uinput |
 | `clients/web/` | Cliente web/PWA, navegable con mando y con el mando de la tele |
 | `clients/tizen/`, `clients/webos/` | Empaquetado del cliente web para Samsung y LG |
 | `landing/` | Web comercial en Next.js + Skiper UI + Motion (estática, con formulario de demo conectado al panel) |
 | `clients/android/` | App nativa Kotlin (móvil + Android TV) con WebRTC nativo y controles táctiles |
 | `scripts/vendor.sh` | Regenera las librerías de animación servidas en local |
-| `docs/` | [Arquitectura](docs/ARCHITECTURE.md) · [Protocolos](docs/PROTOCOL.md) |
+| `deploy/` | Instalador, ISO, Proxmox, Helm, n8n, marca de arranque · [guía](docs/DEPLOY.md) |
+| `docs/` | [Despliegue](docs/DEPLOY.md) · [Arquitectura](docs/ARCHITECTURE.md) · [Protocolos](docs/PROTOCOL.md) |
 | `tests/e2e/` | Prueba de extremo a extremo con Chromium headless, sin GPU ni Docker |
 
 ### Qué ofrece
@@ -47,23 +48,33 @@ clientes ──WebRTC (H.264/Opus + input)──▶ nodos GPU (un contenedor por
 
 ---
 
-## 1. Control plane (1 VPS o máquina)
+## 1. Despliegue en 2 pasos
 
-Requisitos: Docker + Compose, un dominio apuntando a la máquina, puertos abiertos:
-TCP 80/443, TCP/UDP 3478, TCP 5349, UDP 49160-49400 (relay TURN).
-
-```bash
-cp .env.example .env          # rellena dominio, IP pública y secretos (openssl rand -base64 48)
-docker compose up -d --build
-```
-
-Caddy saca el certificado solo. El admin de `.env` se crea al arrancar.
-Alta de un nodo (guarda el token, no se vuelve a mostrar):
+**👉 Guía completa: [docs/DEPLOY.md](docs/DEPLOY.md)** — ISO de Ubuntu que se instala sola, un comando en un
+Ubuntu existente, plantillas de Proxmox, Helm para Kubernetes, autoescalado con n8n y Cloudflare Tunnel.
 
 ```bash
-docker compose exec api python -m app.cli create-node --name gpu-01 --capacity 4 --platforms ps2,gc,wii
-docker compose exec api python -m app.cli create-user --email jugador@ejemplo.com --password 'xxxxxxxx'
+# Orquestador (master), publicado con Cloudflare Tunnel y vídeo por el TURN de Cloudflare: sin abrir puertos
+sudo ./deploy/install/install.sh --role orchestrator --domain play.empresa.com \
+  --tunnel-token <TOKEN> --cf-turn-key-id <KEY_ID> --cf-turn-token <API_TOKEN>
+
+# Nodo gaming (slave), en cada máquina con GPU: se da de alta solo
+curl -fsSL https://play.empresa.com/install/node.sh | sudo bash -s -- --join-token <TOKEN_DE_UNIÓN>
 ```
+
+| Carpeta | Para qué |
+|---|---|
+| `deploy/install/` | Instalador para Ubuntu 22.04/24.04 y el comando `cloudplay` (estado, actualizaciones sin cortes, copias, túnel, drenaje) |
+| `deploy/iso/` | `build-iso.sh`: ISO de Ubuntu 24.04 con autoinstalación y CloudPlay en el primer arranque |
+| `deploy/proxmox/` | Plantilla de nodo con cloud-init, clones con GPU en passthrough, retirada sin cortes |
+| `deploy/helm/cloudplay/` | Chart de Kubernetes (HA, rolling updates, PDB, cloudflared, DaemonSet de nodos opcional) |
+| `deploy/n8n/` | Workflow de autoescalado en Proxmox (sube con cola, drena y apaga lo que sobra) |
+| `deploy/branding/` | Animación de arranque (Plymouth) que identifica orquestador / nodo gaming |
+
+Instalación manual (sin el instalador): `cp .env.example .env && docker compose up -d --build` en el orquestador,
+y en cada nodo `cd worker && docker build -t cloudplay/session:local ./session && cp worker.env.example worker.env
+&& docker compose up -d --build` con `JOIN_TOKEN` y `CP_URL` rellenos. Los juegos van en
+`/srv/cloudplay/library/{ps2,gc,wii}` (se dan de alta solos) y la BIOS de PS2 en `/srv/cloudplay/bios/ps2`.
 
 ### Web comercial
 
@@ -72,31 +83,13 @@ cd landing && npm ci
 NEXT_PUBLIC_SITE_URL=https://$LANDING_DOMAIN npm run build
 docker compose up -d caddy      # sirve landing/out en LANDING_DOMAIN
 ```
+(o `--with-landing` en el instalador)
 
-## 2. Nodo worker (cada máquina con GPU)
+## 2. Requisitos de los nodos gaming
 
-Requisitos: Linux + Docker, módulo `uinput`, y según la GPU:
-- **NVIDIA**: driver + [nvidia-container-toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/) → `GPU=nvidia` (NVENC)
-- **Intel/AMD**: `/dev/dri` → `GPU=vaapi`
-- Sin GPU: `GPU=cpu` (x264 + render por software, solo para pruebas)
-
-```bash
-sudo modprobe uinput && echo uinput | sudo tee /etc/modules-load.d/uinput.conf
-
-# Librería: una carpeta por plataforma. Los juegos se dan de alta solos al conectar el agente.
-sudo mkdir -p /srv/cloudplay/library/{ps2,gc,wii} /srv/cloudplay/bios/ps2
-#   ps2/  .iso .chd .cso    gc/  .iso .rvz .gcm .ciso    wii/  .wbfs .rvz .iso
-#   bios/ps2/  tu BIOS volcada (scphXXXXX.bin) — GameCube y Wii no la necesitan
-
-cd worker
-docker build -t cloudplay/session:latest ./session
-cp worker.env.example worker.env    # CP_URL, NODE_TOKEN, GPU, MinIO...
-docker compose up -d --build
-```
-
-Firewall del worker: UDP `ICE_PORT_BASE` … `ICE_PORT_BASE + CAPACITY*20` (por defecto 40000-40079 con 4 slots).
-Si los workers están en una LAN privada, MinIO y la API tienen que ser alcanzables desde ellos
-(VPN tipo WireGuard/Tailscale recomendada) y añade su subred a `allowed-peer-ip` en coturn.
+- **NVIDIA**: el instalador pone el driver y nvidia-container-toolkit → NVENC
+- **Intel/AMD**: `/dev/dri` → VA-API
+- Sin GPU: render y codificación por CPU (solo para pruebas)
 
 ### Dimensionado orientativo (mídelo con tus juegos)
 

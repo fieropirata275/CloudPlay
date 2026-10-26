@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=CloudPlay
+Description=Arranque de CloudPlay: identifica si la máquina es el orquestador (master) o un nodo gaming (slave)
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/cloudplay
+ScriptFile=/usr/share/plymouth/themes/cloudplay/cloudplay.script

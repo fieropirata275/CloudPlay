@@ -50,11 +50,12 @@
       document.querySelector('#nodes-table tbody').innerHTML = nodes.length ? nodes.map(function (n) {
         var pct = n.capacity ? Math.round(n.load / n.capacity * 100) : 0;
         return '<tr><td><strong>' + esc(n.name) + '</strong></td>' +
-          '<td><span class="state ' + esc(n.status) + '">' + esc(STATE[n.status] || n.status) + '</span></td>' +
+          '<td><span class="state ' + esc(n.draining && n.status === 'online' ? 'queued' : n.status) + '">' + esc(n.draining && n.status === 'online' ? 'Drenando' : (STATE[n.status] || n.status)) + '</span></td>' +
           '<td>' + esc(n.gpu) + '</td><td>' + esc(n.platforms.join(', ')) + '</td>' +
           '<td class="num"><span class="load' + (pct >= 100 ? ' full' : '') + '"><i style="width:' + pct + '%"></i></span>' + n.load + ' / ' + n.capacity + '</td>' +
-          '<td>' + ago(n.last_seen) + '</td></tr>';
-      }).join('') : '<tr><td colspan="6" class="muted">Ningún nodo dado de alta. Crea uno con <code>python -m app.cli create-node</code>.</td></tr>';
+          '<td>' + ago(n.last_seen) + '</td>' +
+          '<td><button class="btn quiet" data-drain="' + esc(n.id) + '" data-on="' + (n.draining ? '0' : '1') + '">' + (n.draining ? 'Reanudar' : 'Drenar') + '</button></td></tr>';
+      }).join('') : '<tr><td colspan="7" class="muted">Ningún nodo todavía. Instala uno con <code>cloudplay node-install</code> o créalo con <code>python -m app.cli create-node</code>.</td></tr>';
 
       document.querySelector('#sessions-table tbody').innerHTML = sessions.length ? sessions.map(function (s) {
         var st2 = STATE[s.status] || s.status;
@@ -75,6 +76,18 @@
       if (first) { first = false; entrance(); }
     }).catch(function (e) { CP.toast(e.message); });
   }
+
+  // Drenar: el nodo termina sus partidas y no recibe nuevas (para mantenimiento sin cortar a nadie)
+  document.getElementById('nodes-table').addEventListener('click', function (e) {
+    var id = e.target.getAttribute && e.target.getAttribute('data-drain');
+    if (!id) return;
+    var on = e.target.getAttribute('data-on') === '1';
+    e.target.disabled = true;
+    CP.api('POST', '/api/admin/nodes/' + id + '/drain', { on: on }).then(function () {
+      CP.toast(on ? 'Nodo drenando: acaba sus partidas y no recibe nuevas' : 'El nodo vuelve a aceptar partidas');
+      refresh();
+    }).catch(function (err) { e.target.disabled = false; CP.toast(err.message); });
+  });
 
   document.getElementById('sessions-table').addEventListener('click', function (e) {
     var id = e.target.getAttribute && e.target.getAttribute('data-kill');

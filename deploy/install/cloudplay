@@ -1,0 +1,221 @@
+#!/usr/bin/env bash
+# cloudplay — operar CloudPlay en esta máquina (orquestador, nodo gaming o ambos).
+set -Eeuo pipefail
+
+DEST=/opt/cloudplay
+ETC=/etc/cloudplay
+ROLE=$(cat "$ETC/role" 2>/dev/null || echo "")
+ENV="$DEST/.env"
+WENV="$DEST/worker/worker.env"
+BACKUPS=/var/backups/cloudplay
+
+say() { printf '\033[1;35m▸\033[0m %s\n' "$*"; }
+ok() { printf '\033[1;32m✔\033[0m %s\n' "$*"; }
+die() { printf '\033[1;31m✘\033[0m %s\n' "$*" >&2; exit 1; }
+get_env() { grep -m1 "^$2=" "$1" 2>/dev/null | cut -d= -f2- || true; }
+set_env() {
+  local file="$1" key="$2" val="$3" tmp
+  tmp=$(mktemp)
+  awk -v k="$key" -v v="$val" 'BEGIN{d=0} index($0,k"=")==1 {print k"="v; d=1; next} {print} END{if(!d) print k"="v}' "$file" > "$tmp"
+  cat "$tmp" > "$file"; rm -f "$tmp"
+}
+is_orch() { [ "$ROLE" = orchestrator ] || [ "$ROLE" = all ]; }
+is_node() { [ "$ROLE" = node ] || [ "$ROLE" = all ]; }
+need_root() { [ "$(id -u)" -eq 0 ] || die "Necesita sudo"; }
+dc() { (cd "$DEST" && docker compose "$@"); }
+dw() { (cd "$DEST/worker" && docker compose "$@"); }
+
+wait_healthy() {  # contenedor, segundos
+  local c="$1" t="${2:-120}" s
+  for _ in $(seq 1 "$t"); do
+    s=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$c" 2>/dev/null || echo none)
+    [ "$s" = healthy ] && return 0
+    sleep 1
+  done
+  return 1
+}
+
+api() {  # método ruta [json] — habla con la API desde dentro de su contenedor, con el admin del .env
+  dc exec -T -e M="$1" -e P="$2" -e B="${3:-}" api-a python - <<'PY'
+import json, os, urllib.request
+base = "http://127.0.0.1:8000"
+def call(m, p, body=None, tok=None):
+    h = {"Content-Type": "application/json"}
+    if tok: h["Authorization"] = "Bearer " + tok
+    r = urllib.request.Request(base + p, data=body.encode() if body else None, headers=h, method=m)
+    return urllib.request.urlopen(r, timeout=10).read().decode()
+tok = json.loads(call("POST", "/api/auth/login", json.dumps({"email": os.environ["CP_ADMIN_EMAIL"], "password": os.environ["CP_ADMIN_PASSWORD"]})))["access_token"]
+print(call(os.environ["M"], os.environ["P"], os.environ.get("B") or None, tok))
+PY
+}
+
+cmd_status() {
+  echo "Rol: ${ROLE:-sin instalar}"
+  if is_orch; then
+    echo; say "Orquestador"
+    dc ps --format 'table {{.Service}}\t{{.Status}}'
+    if dc exec -T api-a python -c "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/api/ready',timeout=3)" >/dev/null 2>&1; then ok "API lista"; else echo "API: no responde"; fi
+    api GET /api/admin/stats 2>/dev/null | jq -r '"Nodos en línea: \(.nodes_online)/\(.nodes_total) · huecos libres: \(.capacity_online - .placed) · jugando: \(.placed) · en cola: \(.queued)"' || true
+  fi
+  if is_node; then
+    echo; say "Nodo gaming"
+    dw ps --format 'table {{.Service}}\t{{.Status}}'
+    if [ -f /var/lib/cloudplay/status.json ]; then
+      jq -r '"\(.name): " + (if .connected then "conectado" else "SIN CONEXIÓN" end) + (if .draining then " · drenando" else "" end) + " · partidas \(.sessions)/\(.capacity)"' /var/lib/cloudplay/status.json
+    fi
+  fi
+}
+
+cmd_logs() {
+  local svc="${1:-}"
+  if [ -n "$svc" ] && is_orch && dc config --services | grep -qx "$svc"; then dc logs -f --tail 200 "$svc"; return; fi
+  if is_node && { [ -z "$svc" ] || [ "$svc" = agent ]; }; then dw logs -f --tail 200 agent; return; fi
+  dc logs -f --tail 100
+}
+
+# Actualización sin cortes: réplicas de la API de una en una; en los nodos, las partidas en curso siguen
+# con la imagen vieja y las nuevas arrancan con la nueva.
+cmd_update() {
+  need_root
+  local build=1 src=""
+  for a in "$@"; do if [ "$a" = --no-build ]; then build=0; else src="$a"; fi; done
+  if [ -z "$src" ]; then
+    if [ -d "$DEST/.git" ]; then (cd "$DEST" && git pull --ff-only); src="$DEST"
+    elif is_node && ! is_orch; then
+      local url; url=$(get_env "$WENV" CP_URL | sed 's#^wss://#https://#; s#^ws://#http://#')
+      src=$(mktemp -d); say "Descargando la versión del orquestador ($url)"
+      curl -fsSL "$url/install/cloudplay.tar.gz" | tar -xz -C "$src"
+    else die "Indica la carpeta o el .tar.gz con la versión nueva: cloudplay update /ruta/cloudplay"; fi
+  fi
+  if [ -f "$src" ]; then local t; t=$(mktemp -d); tar -xzf "$src" -C "$t"; src="$t"; fi
+  say "Instalando ficheros nuevos"
+  # shellcheck disable=SC2046
+  eval set -- "$(cat "$ETC/install.args")"
+  bash "$src/deploy/install/install.sh" "$@" --skip-build >/dev/null
+  if is_orch; then
+    if [ "$build" = 1 ]; then say "Construyendo la imagen de la API"; dc build -q api-a; fi
+    for r in api-a api-b; do
+      say "Renovando $r (la otra réplica sigue atendiendo)"
+      dc up -d --no-deps --force-recreate "$r"
+      wait_healthy "cloudplay-$r-1" 120 || die "$r no arranca; la otra réplica sigue sirviendo. Mira: cloudplay logs $r"
+      sleep 3
+    done
+    dc up -d --remove-orphans
+    ok "Orquestador actualizado sin cortes"
+  fi
+  if is_node; then
+    if [ "$build" = 1 ]; then
+      say "Construyendo imágenes del nodo"
+      docker build -q -t "cloudplay/session:$(get_env "$DEST/worker/.env" CLOUDPLAY_TAG)" "$DEST/worker/session" >/dev/null
+      dw build -q
+    fi
+    dw up -d --remove-orphans   # el agente adopta las partidas en curso al volver
+    ok "Nodo actualizado (las partidas abiertas no se han cortado)"
+  fi
+}
+
+cmd_backup() {
+  need_root; is_orch || die "Las copias se hacen en el orquestador"
+  mkdir -p "$BACKUPS"; chmod 700 "$BACKUPS"
+  local ts; ts=$(date +%Y%m%d-%H%M%S)
+  say "Base de datos"
+  dc exec -T postgres pg_dump -U cloudplay -d cloudplay --clean --if-exists | gzip > "$BACKUPS/db-$ts.sql.gz"
+  say "Partidas guardadas (S3)"
+  docker run --rm -v cloudplay_s3_data:/data:ro -v "$BACKUPS:/out" alpine:3.20 tar -czf "/out/s3-$ts.tar.gz" -C /data . 2>/dev/null
+  cp "$ENV" "$BACKUPS/env-$ts"; chmod 600 "$BACKUPS"/*
+  find "$BACKUPS" -type f -mtime +"${KEEP_DAYS:-7}" -delete
+  ok "Copia en $BACKUPS ($(du -sh "$BACKUPS" | cut -f1)). Llévala también fuera de esta máquina."
+}
+
+cmd_restore() {
+  need_root; is_orch || die "Solo en el orquestador"
+  local f="${1:-}"; [ -f "$f" ] || die "Uso: cloudplay restore $BACKUPS/db-FECHA.sql.gz"
+  read -r -p "Esto sustituye la base de datos actual por $f. ¿Seguir? (escribe sí) " a
+  [ "$a" = "sí" ] || [ "$a" = "si" ] || die "Cancelado"
+  gunzip -c "$f" | dc exec -T postgres psql -q -U cloudplay -d cloudplay >/dev/null
+  dc restart api-a api-b >/dev/null
+  ok "Base de datos restaurada"
+}
+
+cmd_join_token() { is_orch || die "Solo en el orquestador"; get_env "$ENV" CP_JOIN_TOKEN; }
+
+cmd_node_command() {
+  is_orch || die "Solo en el orquestador"
+  echo "curl -fsSL https://$(get_env "$ENV" CP_DOMAIN)/install/node.sh | sudo bash -s -- --join-token $(get_env "$ENV" CP_JOIN_TOKEN)"
+}
+
+cmd_tunnel() {
+  need_root; is_orch || die "El túnel va en el orquestador"
+  local token="${1:-}"; [ -n "$token" ] || die "Uso: cloudplay tunnel <TOKEN del túnel de Cloudflare>"
+  eval set -- "$(cat "$ETC/install.args")"
+  bash "$DEST/deploy/install/install.sh" "$@" --tunnel-token "$token" --skip-build
+}
+
+cmd_turn_cloudflare() {
+  need_root; is_orch || die "Solo en el orquestador"
+  [ $# -eq 2 ] || die "Uso: cloudplay turn-cloudflare <TURN_KEY_ID> <API_TOKEN>"
+  set_env "$ENV" CP_CF_TURN_KEY_ID "$1"; set_env "$ENV" CP_CF_TURN_API_TOKEN "$2"; set_env "$ENV" CP_TURN_PROVIDER cloudflare
+  for r in api-a api-b; do dc up -d --no-deps --force-recreate "$r" >/dev/null; wait_healthy "cloudplay-$r-1" 120 || true; done
+  ok "El vídeo usará el TURN de Cloudflare"
+}
+
+cmd_drain() {
+  is_node || die "Solo en un nodo gaming"
+  need_root
+  touch /var/lib/cloudplay/drain
+  say "Nodo drenando: no recibe partidas nuevas (se avisa al orquestador en ≤10 s)"
+  if [ "${1:-}" = --wait ]; then
+    while :; do
+      n=$(jq -r .sessions /var/lib/cloudplay/status.json 2>/dev/null || echo 0)
+      [ "$n" = 0 ] && break
+      echo "  quedan $n partidas…"; sleep 15
+    done
+    ok "Sin partidas: ya puedes apagar o actualizar esta máquina"
+  fi
+}
+
+cmd_resume() { is_node || die "Solo en un nodo gaming"; need_root; rm -f /var/lib/cloudplay/drain; ok "El nodo vuelve a aceptar partidas"; }
+
+cmd_stop_sessions() {
+  # Cierra las partidas de forma ordenada (el agente sube las partidas guardadas). Lo usa el SAI con batería baja.
+  is_node || return 0
+  touch /var/lib/cloudplay/drain
+  docker ps -q --filter label=cloudplay.session | xargs -r docker stop -t 20 >/dev/null
+  for _ in $(seq 1 30); do
+    [ "$(docker ps -aq --filter label=cloudplay.session | wc -l)" = 0 ] && break; sleep 2
+  done
+  ok "Partidas cerradas y guardadas"
+}
+
+case "${1:-help}" in
+  status) cmd_status ;;
+  logs) shift; cmd_logs "$@" ;;
+  update) shift; cmd_update "$@" ;;
+  backup) cmd_backup ;;
+  restore) shift; cmd_restore "$@" ;;
+  join-token) cmd_join_token ;;
+  node-command) cmd_node_command ;;
+  tunnel) shift; cmd_tunnel "$@" ;;
+  turn-cloudflare) shift; cmd_turn_cloudflare "$@" ;;
+  drain) shift; cmd_drain "$@" ;;
+  resume) cmd_resume ;;
+  stop-sessions) cmd_stop_sessions ;;
+  credentials) need_root; cat /root/cloudplay-credenciales.txt ;;
+  *) cat <<'EOF'
+cloudplay — operar CloudPlay en esta máquina
+
+  status                 estado de servicios, nodos y partidas
+  logs [servicio]        registros en vivo (api-a, caddy, cloudflared, agent…)
+  update [carpeta|tgz] [--no-build]   actualizar sin cortar el servicio
+  backup | restore F     copia de base de datos y partidas guardadas (diaria automática a las 4:20)
+  credentials            URL, administrador y token de unión
+  join-token             token para unir nodos
+  node-command           línea para instalar un nodo nuevo
+  tunnel TOKEN           publicar con Cloudflare Tunnel
+  turn-cloudflare ID TK  vídeo por el TURN de Cloudflare (sin abrir puertos UDP)
+  drain [--wait]         nodo: dejar de aceptar partidas (mantenimiento)
+  resume                 nodo: volver a aceptar partidas
+  stop-sessions          nodo: cerrar y guardar todas las partidas (SAI con batería baja)
+EOF
+  ;;
+esac

@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cp.name" . }}-api
+  labels: {{- include "cp.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.api.replicas }}
+  # Actualización sin cortes: primero arranca la nueva réplica, luego se retira una vieja
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  selector:
+    matchLabels: {{- include "cp.sel" (list $ "api") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "cp.sel" (list $ "api") | nindent 8 }}
+      annotations:
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+    spec:
+      # Réplicas repartidas entre máquinas distintas: si cae una máquina, la API sigue
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: {{- include "cp.sel" (list $ "api") | nindent 14 }}
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: api
+          image: {{ .Values.images.controlPlane }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          ports: [{ name: http, containerPort: 8000 }]
+          env:
+            - { name: POSTGRES_PASSWORD, valueFrom: { secretKeyRef: { name: {{ include "cp.name" . }}, key: postgresPassword } } }
+            - { name: CP_DATABASE_URL, value: {{ include "cp.dbUrl" . | quote }} }
+            - { name: CP_REDIS_URL, value: "redis://{{ include "cp.name" . }}-redis:6379/0" }
+            - { name: CP_PUBLIC_URL, value: "https://{{ .Values.domain }}" }
+            - { name: CP_JWT_SECRET, valueFrom: { secretKeyRef: { name: {{ include "cp.name" . }}, key: jwtSecret } } }
+            - { name: CP_JOIN_TOKEN, valueFrom: { secretKeyRef: { name: {{ include "cp.name" . }}, key: joinToken } } }
+            - { name: CP_ADMIN_EMAIL, value: {{ .Values.admin.email | quote }} }
+            - { name: CP_ADMIN_PASSWORD, valueFrom: { secretKeyRef: { name: {{ include "cp.name" . }}, key: adminPassword } } }
+            - { name: CP_TURN_PROVIDER, value: {{ .Values.turn.provider | quote }} }
+            - { name: CP_CF_TURN_KEY_ID, value: {{ .Values.turn.cloudflareKeyId | quote }} }
+            - { name: CP_CF_TURN_API_TOKEN, valueFrom: { secretKeyRef: { name: {{ include "cp.name" . }}, key: cfTurnApiToken } } }
+            - { name: CP_TURN_URLS, value: {{ .Values.turn.coturnUrls | quote }} }
+            - { name: CP_STUN_URLS, value: {{ .Values.turn.stunUrls | quote }} }
+            - { name: CP_TURN_SECRET, valueFrom: { secretKeyRef: { name: {{ include "cp.name" . }}, key: turnSecret } } }
+            - { name: CP_NODE_S3_ENDPOINT, value: {{ .Values.s3.publicEndpoint | default (printf "http://%s-s3:8333" (include "cp.name" .)) | quote }} }
+            - { name: CP_NODE_S3_ACCESS_KEY, valueFrom: { secretKeyRef: { name: {{ include "cp.name" . }}, key: s3AccessKey } } }
+            - { name: CP_NODE_S3_SECRET_KEY, valueFrom: { secretKeyRef: { name: {{ include "cp.name" . }}, key: s3SecretKey } } }
+          readinessProbe:
+            httpGet: { path: /api/ready, port: http }
+            periodSeconds: 5
+            failureThreshold: 2
+          livenessProbe:
+            httpGet: { path: /api/health, port: http }
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          lifecycle:
+            # Da tiempo a que el Service deje de mandarle tráfico antes de apagarse
+            preStop: { exec: { command: ["sleep", "5"] } }
+          resources: {{- toYaml .Values.api.resources | nindent 12 }}
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "cp.name" . }}-api
+  labels: {{- include "cp.labels" . | nindent 4 }}
+spec:
+  selector: {{- include "cp.sel" (list $ "api") | nindent 4 }}
+  ports: [{ name: http, port: 8000, targetPort: http }]
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "cp.name" . }}-api
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {{- include "cp.sel" (list $ "api") | nindent 6 }}

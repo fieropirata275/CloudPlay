@@ -1,0 +1,7 @@
+apiVersion: v2
+name: cloudplay
+description: CloudPlay (emulación cloud de PS2, GameCube y Wii) en Kubernetes — orquestador en alta disponibilidad, Cloudflare Tunnel y nodos gaming opcionales
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords: [cloud-gaming, webrtc, emulation]

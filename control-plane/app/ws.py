@@ -89,6 +89,10 @@ async def handle_agent_msg(node_id: str, msg: dict) -> None:
                 if s.id not in running:
                     s.status, s.error, s.ended_at = "failed", "El nodo se reinició", now()
 
+        elif kind == "drain":
+            node.draining = bool(msg.get("on", True))
+            log.info("nodo %s %s", node.name, "drenando" if node.draining else "vuelve a aceptar partidas")
+
         elif kind == "session_state":
             s = await db.get(Session, msg.get("session_id", ""))
             if s is not None and s.node_id == node_id and s.status in ACTIVE_STATES:

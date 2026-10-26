@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, false
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 PLATFORMS = {"ps2": "PlayStation 2", "gc": "GameCube", "wii": "Wii"}
@@ -54,6 +54,8 @@ class Node(Base):
     gpu: Mapped[str] = mapped_column(String(64), default="unknown")
     status: Mapped[str] = mapped_column(String(16), default="offline")
     last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Drenando: no recibe partidas nuevas, las que tiene siguen hasta acabar (mantenimiento sin cortes)
+    draining: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
 
 
 class Session(Base):

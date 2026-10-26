@@ -1,0 +1,16 @@
+# Primer arranque tras instalar desde la ISO: instala CloudPlay con los argumentos grabados en la ISO.
+[Unit]
+Description=CloudPlay: instalación en el primer arranque
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/cloudplay/firstboot.args
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /opt/cloudplay-src/deploy/iso/firstboot.sh
+StandardOutput=journal+console
+StandardError=journal+console
+TimeoutStartSec=infinity
+
+[Install]
+WantedBy=multi-user.target

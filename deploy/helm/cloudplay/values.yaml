@@ -1,0 +1,80 @@
+# Dominio público de la plataforma (y de la web comercial, opcional)
+domain: play.example.com
+landingDomain: ""
+
+images:
+  controlPlane: cloudplay/control-plane:1.0.0
+  web: cloudplay/web:1.0.0
+  agent: cloudplay/agent:1.0.0
+  postgres: postgres:16-alpine
+  redis: redis:7-alpine
+  s3: chrislusf/seaweedfs:4.45
+  cloudflared: cloudflare/cloudflared:2026.9.3
+  pullPolicy: IfNotPresent
+
+admin:
+  email: admin@example.com
+  # Vacío = se genera y se guarda en el Secret (kubectl get secret <release>-cloudplay -o jsonpath='{.data.adminPassword}' | base64 -d)
+  password: ""
+
+api:
+  # Dos o más: las actualizaciones son rolling y el PodDisruptionBudget mantiene siempre una viva
+  replicas: 2
+  resources:
+    requests: { cpu: 200m, memory: 256Mi }
+    limits: { memory: 1Gi }
+
+web:
+  replicas: 2
+
+# TURN para el vídeo: coturn no se incluye en Kubernetes (necesita red del host y miles de puertos UDP).
+# Con Cloudflare Tunnel usa "cloudflare"; si tienes un coturn fuera, "coturn" + urls + secreto.
+turn:
+  provider: cloudflare       # cloudflare | coturn | none
+  cloudflareKeyId: ""
+  cloudflareApiToken: ""
+  coturnUrls: ""
+  coturnSecret: ""
+  stunUrls: ""
+
+# Cloudflare Tunnel: publica el servicio sin Ingress ni LoadBalancer. En el panel de Cloudflare apunta
+# los hostnames a http://<release>-cloudplay-web:80 (y s3.<dominio> a http://<release>-cloudplay-s3:8333).
+cloudflared:
+  enabled: true
+  token: ""
+  replicas: 2
+
+# Ingress opcional (si no usas túnel)
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  tls: []
+
+postgres:
+  # Para producción con varios nodos de Kubernetes se recomienda un Postgres gestionado o CloudNativePG:
+  # pon aquí su URL (postgresql+asyncpg://...) y se desactiva el Postgres interno.
+  externalUrl: ""
+  storage: 10Gi
+  storageClass: ""
+
+s3:
+  storage: 20Gi
+  storageClass: ""
+  # URL con la que los nodos gaming de FUERA del clúster llegan al S3 (p. ej. https://s3.play.example.com por el túnel)
+  publicEndpoint: ""
+
+# Nodos gaming dentro del clúster (opcional). Requisitos de esos nodos de Kubernetes: Docker Engine instalado
+# (el agente lanza los contenedores de sesión con red del host), GPU con su toolkit, módulo uinput y la etiqueta
+# cloudplay.io/gaming=true. Lo habitual es tener los nodos gaming fuera (ISO, Proxmox o el instalador).
+gaming:
+  enabled: false
+  nodeSelector:
+    cloudplay.io/gaming: "true"
+  gpu: nvidia
+  capacity: 2
+  platforms: ps2,gc,wii
+  libraryPath: /srv/cloudplay/library
+  biosPath: /srv/cloudplay/bios
+  dataPath: /var/lib/cloudplay
+  sessionImage: cloudplay/session:1.0.0

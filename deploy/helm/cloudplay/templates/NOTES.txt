@@ -1,0 +1,17 @@
+CloudPlay desplegado en el namespace {{ .Release.Namespace }}.
+
+Administrador: {{ .Values.admin.email }}
+  Contraseña:  kubectl -n {{ .Release.Namespace }} get secret {{ include "cp.name" . }} -o jsonpath='{.data.adminPassword}' | base64 -d
+Token de unión de nodos gaming:
+               kubectl -n {{ .Release.Namespace }} get secret {{ include "cp.name" . }} -o jsonpath='{.data.joinToken}' | base64 -d
+{{- if .Values.cloudflared.enabled }}
+
+En Cloudflare (Zero Trust → Networks → Tunnels → tu túnel → Public hostnames):
+  {{ .Values.domain }}  →  http://{{ include "cp.name" . }}-web.{{ .Release.Namespace }}:80
+  s3.{{ .Values.domain }}  →  http://{{ include "cp.name" . }}-s3.{{ .Release.Namespace }}:8333   (nodos gaming fuera del clúster)
+{{- end }}
+
+Nodo gaming fuera del clúster (máquina con GPU):
+  curl -fsSL https://{{ .Values.domain }}/install/node.sh   ← solo con el orquestador de Docker Compose.
+  En Kubernetes usa la ISO o el instalador directamente:
+  sudo deploy/install/install.sh --role node --cp-url https://{{ .Values.domain }} --join-token <TOKEN>

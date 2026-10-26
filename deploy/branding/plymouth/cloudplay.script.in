@@ -1,0 +1,178 @@
+# Tema de arranque de CloudPlay (Plymouth, módulo script).
+# El instalador sustituye @MODE@ por master, slave o all y copia badge/dot/ring del rol.
+mode = "@MODE@";
+
+Window.SetBackgroundTopColor(0.063, 0.071, 0.227);    # #10123A
+Window.SetBackgroundBottomColor(0.027, 0.031, 0.110);
+
+W = Window.GetWidth();
+H = Window.GetHeight();
+cx = Window.GetX() + W / 2;
+cy = Window.GetY() + H / 2 - H * 0.12;
+
+# --------------------------------------------------------------- piezas
+logo.image = Image("logo.png");
+logo.sprite = Sprite(logo.image);
+logo.sprite.SetZ(10);
+
+word.image = Image("wordmark.png");
+word.sprite = Sprite(word.image);
+word.sprite.SetPosition(cx - word.image.GetWidth() / 2, cy + 168, 10);
+
+badge.image = Image("badge.png");
+badge.sprite = Sprite(badge.image);
+badge.sprite.SetPosition(cx - badge.image.GetWidth() / 2, cy + 256, 10);
+
+ring.image = Image("ring.png");
+ring.sprite = Sprite();
+ring.sprite.SetZ(2);
+
+# Ondas extra del nodo gaming (señal que sale hacia los jugadores)
+for (i = 0; i < 3; i++) {
+  wave[i].sprite = Sprite();
+  wave[i].sprite.SetZ(1);
+}
+
+# Tamaños precalculados: escalar imágenes en cada fotograma es caro en framebuffers sin aceleración
+STEPS = 24;
+for (k = 0; k < STEPS; k++) {
+  sz = 120 + k * 360 / (STEPS - 1);
+  wavestep[k] = ring.image.Scale(sz, sz);
+}
+for (k = 0; k < 16; k++) {
+  f = 0.965 + k * 0.07 / 15;
+  logostep[k] = logo.image.Scale(logo.image.GetWidth() * f, logo.image.GetHeight() * f);
+}
+
+dot.image = Image("dot.png");
+N = 12;
+for (i = 0; i < N; i++) {
+  dots[i].sprite = Sprite(dot.image);
+  dots[i].sprite.SetZ(5);
+}
+
+bar.bg = Image("bar-bg.png");
+bar.fill_image = Image("bar-fill.png");
+bar.x = cx - bar.bg.GetWidth() / 2;
+bar.y = cy + 336;
+bar.bg_sprite = Sprite(bar.bg);
+bar.bg_sprite.SetPosition(bar.x, bar.y, 10);
+bar.fill_sprite = Sprite();
+bar.fill_sprite.SetPosition(bar.x, bar.y, 11);
+bar.shown = 0;
+
+status.sprite = Sprite();
+status.sprite.SetZ(10);
+msg.sprite = Sprite();
+msg.sprite.SetZ(10);
+
+# Texto del modo (arranque, apagado, reinicio)
+fun mode_text() {
+  m = Plymouth.GetMode();
+  if (m == "shutdown") return "Apagando con cuidado: las partidas ya están guardadas";
+  if (m == "reboot") return "Reiniciando";
+  if (m == "updates" || m == "system-upgrade") return "Actualizando el sistema";
+  if (mode == "master") return "Arrancando el orquestador";
+  if (mode == "slave") return "Arrancando el nodo gaming";
+  return "Arrancando CloudPlay";
+}
+fun set_status(text) {
+  status.image = Image.Text(text, 0.60, 0.63, 0.84, 1, "Sans 13");
+  status.sprite.SetImage(status.image);
+  status.sprite.SetPosition(cx - status.image.GetWidth() / 2, bar.y + 22, 10);
+}
+set_status(mode_text());
+
+# --------------------------------------------------------------- animación
+t = 0;
+progress = 0;
+shown = 0;
+
+fun refresh() {
+  t++;
+  # Entrada: todo aparece en el primer segundo
+  shown = Math.Min(1, t / 40);
+
+  # La nube "respira" y flota
+  img = logostep[Math.Int((Math.Sin(t / 18) + 1) * 7.5)];
+  logo.sprite.SetImage(img);
+  logo.sprite.SetX(cx - img.GetWidth() / 2);
+  logo.sprite.SetY(cy - img.GetHeight() / 2 + 6 * Math.Sin(t / 30));
+  logo.sprite.SetOpacity(shown);
+  word.sprite.SetOpacity(shown);
+  badge.sprite.SetOpacity(Math.Min(1, Math.Max(0, (t - 20) / 30)) * (0.75 + 0.25 * Math.Sin(t / 12)));
+
+  if (mode == "slave") {
+    # Nodo gaming: ondas que salen del logo, como la señal de vídeo hacia los jugadores
+    for (i = 0; i < 3; i++) {
+      p = ((t + i * 40) % 120) / 120;
+      w = wavestep[Math.Int(p * (STEPS - 1))];
+      wave[i].sprite.SetImage(w);
+      wave[i].sprite.SetPosition(cx - w.GetWidth() / 2, cy - w.GetHeight() / 2, 1);
+      wave[i].sprite.SetOpacity((1 - p) * 0.55 * shown);
+    }
+    # Partículas que suben como paquetes
+    for (i = 0; i < N; i++) {
+      a = i * 2 * Math.Pi / N;
+      r = 150 + ((t * 2 + i * 37) % 140);
+      dots[i].sprite.SetX(cx + Math.Cos(a) * r - 13);
+      dots[i].sprite.SetY(cy + Math.Sin(a) * r - 13);
+      dots[i].sprite.SetOpacity((1 - (r - 150) / 140) * shown);
+    }
+  } else {
+    # Orquestador: anillo que gira y nodos en órbita alrededor (los nodos que coordina)
+    rr = ring.image.Rotate(t / 90);
+    ring.sprite.SetImage(rr);
+    ring.sprite.SetPosition(cx - rr.GetWidth() / 2, cy - rr.GetHeight() / 2, 2);
+    ring.sprite.SetOpacity(shown);
+    for (i = 0; i < N; i++) {
+      a = t / 60 + i * 2 * Math.Pi / N;
+      if (mode == "all" && i % 2 == 1) a = -t / 45 + i * 2 * Math.Pi / N;
+      r = 140 + 8 * Math.Sin(t / 20 + i);
+      if (mode == "all" && i % 2 == 1) r = 105;
+      dots[i].sprite.SetX(cx + Math.Cos(a) * r - 13);
+      dots[i].sprite.SetY(cy + Math.Sin(a) * r * 0.92 - 13);
+      dots[i].sprite.SetOpacity((0.55 + 0.45 * Math.Sin(t / 10 + i)) * shown);
+    }
+  }
+
+  # Barra de progreso (si systemd no da progreso, avanza sola despacio)
+  if (progress < 0.02) target = Math.Min(0.9, t / 1500); else target = progress;
+  bar.cur = bar.cur + (target - bar.cur) * 0.08;
+  fw = Math.Int(bar.fill_image.GetWidth() * Math.Max(0.01, Math.Min(1, bar.cur)));
+  bar.fill_sprite.SetImage(bar.fill_image.Scale(fw, bar.fill_image.GetHeight()));
+  bar.fill_sprite.SetOpacity(shown);
+  bar.bg_sprite.SetOpacity(shown);
+  status.sprite.SetOpacity(shown);
+}
+bar.cur = 0;
+Plymouth.SetRefreshFunction(refresh);
+
+fun boot_progress(duration, p) {
+  progress = p;
+}
+Plymouth.SetBootProgressFunction(boot_progress);
+
+# Mensajes (los servicios de CloudPlay avisan de lo que hacen: "Orquestador en marcha"...)
+fun show_message(text) {
+  msg.image = Image.Text(text, 1, 0.69, 0, 1, "Sans 14");
+  msg.sprite.SetImage(msg.image);
+  msg.sprite.SetPosition(cx - msg.image.GetWidth() / 2, bar.y + 52, 10);
+}
+Plymouth.SetMessageFunction(show_message);
+
+fun quit() {
+  bar.cur = 1;
+}
+Plymouth.SetQuitFunction(quit);
+
+# Contraseña de disco cifrado (si lo hay)
+fun display_password(prompt, bullets) {
+  t2 = prompt;
+  for (i = 0; i < bullets; i++) t2 = t2 + " •";
+  show_message(t2);
+}
+Plymouth.SetDisplayPasswordFunction(display_password);
+fun display_normal() {
+}
+Plymouth.SetDisplayNormalFunction(display_normal);

@@ -1,0 +1,9 @@
+# Rol "all" (orquestador y nodo en la misma máquina): el agente entra en la red del orquestador
+# para hablar con la API (ws://api:8000) y el S3 (http://s3:8333) sin salir a Internet.
+services:
+  agent:
+    networks: [cloudplay]
+networks:
+  cloudplay:
+    external: true
+    name: cloudplay_default

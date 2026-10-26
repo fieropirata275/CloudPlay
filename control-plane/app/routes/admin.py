@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
+from .. import bus
 from ..db import AsyncSession, get_db
 from ..dispatch import queue_positions
 from ..models import ACTIVE_STATES, PLACED_STATES, PLATFORMS, Game, Lead, Node, Session, User, now
@@ -77,6 +78,7 @@ async def list_nodes(db: AsyncSession = Depends(get_db)):
                 "id": n.id,
                 "name": n.name,
                 "status": n.status,
+                "draining": bool(n.draining),
                 "gpu": n.gpu,
                 "capacity": n.capacity,
                 "load": len(active),
@@ -85,6 +87,22 @@ async def list_nodes(db: AsyncSession = Depends(get_db)):
             }
         )
     return out
+
+
+class DrainIn(BaseModel):
+    on: bool = True
+
+
+@router.post("/nodes/{node_id}/drain")
+async def drain_node(node_id: str, body: DrainIn, db: AsyncSession = Depends(get_db)):
+    """Drenar: el nodo deja de recibir partidas nuevas; las que tiene siguen hasta que acaben."""
+    node = await db.get(Node, node_id)
+    if node is None:
+        raise HTTPException(404)
+    node.draining = body.on
+    await db.commit()
+    await bus.publish(f"node:{node.id}", {"type": "drain", "on": body.on})
+    return {"ok": True, "draining": node.draining}
 
 
 @router.delete("/nodes/{node_id}")

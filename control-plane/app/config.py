@@ -20,6 +20,20 @@ class Settings(BaseSettings):
     stun_urls: str = "stun:play.example.com:3478"
     turn_urls: str = "turn:play.example.com:3478?transport=udp,turn:play.example.com:3478?transport=tcp"
     turn_ttl: int = 6 * 3600
+    # "coturn" (secreto compartido, por defecto), "cloudflare" (TURN gestionado de Cloudflare: sin puertos UDP
+    # abiertos, ideal con Cloudflare Tunnel) o "none" (solo STUN)
+    turn_provider: str = "coturn"
+    cf_turn_key_id: str = ""
+    cf_turn_api_token: str = ""
+    cf_turn_ttl: int = 24 * 3600
+
+    # Alta automática de nodos: quien tenga este token puede dar de alta un nodo gaming (plantillas, ISO, k8s)
+    join_token: str = ""
+    # S3 de partidas que se entrega a los nodos al darse de alta (así no va en ningún instalador público)
+    node_s3_endpoint: str = ""
+    node_s3_access_key: str = ""
+    node_s3_secret_key: str = ""
+    node_s3_bucket: str = "cloudplay-saves"
 
     admin_email: str | None = None
     admin_password: str | None = None

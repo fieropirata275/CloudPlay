@@ -1,0 +1,120 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "cp.name" . }}-caddy
+  labels: {{- include "cp.labels" . | nindent 4 }}
+data:
+  Caddyfile: |
+    {
+      auto_https off
+      admin off
+    }
+    # TLS lo pone Cloudflare (túnel) o el Ingress: aquí todo es HTTP interno
+    :80 {
+      encode zstd gzip
+      @landing host {{ .Values.landingDomain | default "landing.invalid" }}
+      handle @landing {
+        handle /api/leads {
+          reverse_proxy {{ include "cp.name" . }}-api:8000
+        }
+        handle {
+          root * /srv/landing
+          try_files {path} {path}.html {path}/index.html /index.html
+          file_server
+        }
+      }
+      handle /api/* {
+        reverse_proxy {{ include "cp.name" . }}-api:8000 {
+          lb_try_duration 10s
+        }
+      }
+      handle /ws/* {
+        reverse_proxy {{ include "cp.name" . }}-api:8000
+      }
+      handle {
+        root * /srv/web
+        try_files {path} /index.html
+        file_server
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cp.name" . }}-web
+  labels: {{- include "cp.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.web.replicas }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  selector:
+    matchLabels: {{- include "cp.sel" (list $ "web") | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "cp.sel" (list $ "web") | nindent 8 }}
+      annotations:
+        checksum/caddy: {{ .Values | toJson | sha256sum }}
+    spec:
+      containers:
+        - name: caddy
+          image: {{ .Values.images.web }}
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          ports: [{ name: http, containerPort: 80 }]
+          volumeMounts: [{ name: caddyfile, mountPath: /etc/caddy }]
+          readinessProbe:
+            tcpSocket: { port: http }
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+      volumes:
+        - name: caddyfile
+          configMap: { name: {{ include "cp.name" . }}-caddy }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "cp.name" . }}-web
+  labels: {{- include "cp.labels" . | nindent 4 }}
+spec:
+  selector: {{- include "cp.sel" (list $ "web") | nindent 4 }}
+  ports: [{ name: http, port: 80, targetPort: http }]
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "cp.name" . }}-web
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {{- include "cp.sel" (list $ "web") | nindent 6 }}
+{{- if .Values.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "cp.name" . }}
+  annotations: {{- toYaml .Values.ingress.annotations | nindent 4 }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.ingress.tls }}
+  tls: {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.domain }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: {{ include "cp.name" . }}-web, port: { name: http } } }
+    {{- with .Values.landingDomain }}
+    - host: {{ . }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: {{ include "cp.name" $ }}-web, port: { name: http } } }
+    {{- end }}
+{{- end }}

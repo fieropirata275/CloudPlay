@@ -1,0 +1,35 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+@font-face{font-family:U;src:url(../../../clients/web/fonts/unbounded-latin-800-normal.woff2)}
+@font-face{font-family:A;font-weight:700;src:url(../../../clients/web/fonts/atkinson-hyperlegible-latin-700-normal.woff2)}
+body{margin:0;background:transparent}
+.a{display:inline-block;margin:10px}
+#wordmark{font:54px U;color:#E8F1FF;letter-spacing:-0.5px;padding:4px 6px}
+.badge{font:700 21px A;letter-spacing:4px;padding:10px 22px;border-radius:999px;display:inline-flex;align-items:center;gap:12px;text-transform:uppercase}
+.badge i{width:10px;height:10px;border-radius:50%}
+#badge-master{color:#FFB000;background:rgba(255,176,0,.12);border:2px solid rgba(255,176,0,.65)} #badge-master i{background:#FFB000;box-shadow:0 0 12px #FFB000}
+#badge-slave{color:#38C5F2;background:rgba(56,197,242,.12);border:2px solid rgba(56,197,242,.65)} #badge-slave i{background:#38C5F2;box-shadow:0 0 12px #38C5F2}
+#badge-all{color:#B6A9FF;background:rgba(122,92,255,.16);border:2px solid rgba(154,139,255,.7)} #badge-all i{background:#9A8BFF;box-shadow:0 0 12px #9A8BFF}
+.dot{width:26px;height:26px}
+.bar{width:360px;height:6px;border-radius:6px}
+#bar-bg{background:#262A6E}
+#bar-fill{background:linear-gradient(90deg,#5B4BD6,#38C5F2,#FFB000)}
+</style></head><body>
+<div class="a" id="logo" style="width:240px;height:240px">
+<svg viewBox="0 0 240 240" width="240" height="240"><defs>
+<linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#9A8BFF"/><stop offset="1" stop-color="#5B4BD6"/></linearGradient>
+<filter id="glow" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="10" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+<g transform="translate(20,20)" filter="url(#glow)"><path fill="url(#g)" d="M52,140 C30,140 18,124 22,106 C25,92 38,84 52,86 C56,62 76,48 100,50 C124,52 140,70 142,90 C160,88 178,102 176,120 C174,134 162,140 150,140 Z"/>
+<path fill="#E8F1FF" opacity=".95" d="M88,92 L122,112 L88,132 Z"/></g></svg></div>
+<div class="a"><div id="wordmark">CloudPlay</div></div>
+<div class="a"><div class="badge" id="badge-master"><i></i>Orquestador · master</div></div>
+<div class="a"><div class="badge" id="badge-slave"><i></i>Nodo gaming · slave</div></div>
+<div class="a"><div class="badge" id="badge-all"><i></i>Orquestador + nodo gaming</div></div>
+<div class="a"><div class="dot" id="dot-master" style="background:radial-gradient(circle,#FFE2A0 0,#FFB000 30%,rgba(255,176,0,0) 70%)"></div></div>
+<div class="a"><div class="dot" id="dot-slave" style="background:radial-gradient(circle,#D8F5FF 0,#38C5F2 30%,rgba(56,197,242,0) 70%)"></div></div>
+<div class="a"><div class="dot" id="dot-all" style="background:radial-gradient(circle,#E5E0FF 0,#9A8BFF 30%,rgba(154,139,255,0) 70%)"></div></div>
+<div class="a" id="ring-master" style="width:300px;height:300px"><svg width="300" height="300"><circle cx="150" cy="150" r="140" fill="none" stroke="#FFB000" stroke-opacity=".55" stroke-width="2" stroke-dasharray="4 14" stroke-linecap="round"/></svg></div>
+<div class="a" id="ring-slave" style="width:300px;height:300px"><svg width="300" height="300"><circle cx="150" cy="150" r="140" fill="none" stroke="#38C5F2" stroke-width="3"/></svg></div>
+<div class="a" id="ring-all" style="width:300px;height:300px"><svg width="300" height="300"><circle cx="150" cy="150" r="140" fill="none" stroke="#9A8BFF" stroke-opacity=".6" stroke-width="2" stroke-dasharray="4 14" stroke-linecap="round"/></svg></div>
+<div class="a"><div class="bar" id="bar-bg"></div></div>
+<div class="a"><div class="bar" id="bar-fill"></div></div>
+</body></html>
