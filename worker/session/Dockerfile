@@ -20,9 +20,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
       gstreamer1.0-plugins-ugly gstreamer1.0-nice gstreamer1.0-pulseaudio gstreamer1.0-x \
       libfuse2 squashfs-tools util-linux \
- # Dolphin desde su PPA oficial (incluye dolphin-emu-nogui)
- && add-apt-repository -y ppa:dolphin-emu/ppa \
+ # Dolphin del repositorio universe de Ubuntu (el PPA oficial ya no existe); Debian lo deja en /usr/games
+ && add-apt-repository -y universe \
  && apt-get update && apt-get install -y --no-install-recommends dolphin-emu \
+ && for b in /usr/games/dolphin-*; do ln -sf "$b" /usr/bin/; done \
+ && command -v dolphin-emu-nogui \
  # VirtualGL (backend EGL: OpenGL en la GPU sin servidor X real)
  && curl -fsSL -o /tmp/vgl.deb "$VGL_URL" && apt-get install -y /tmp/vgl.deb && rm /tmp/vgl.deb \
  # PCSX2 AppImage extraída (sin FUSE dentro del contenedor)
