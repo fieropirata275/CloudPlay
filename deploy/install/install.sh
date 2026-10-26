@@ -22,6 +22,8 @@ ADMIN_EMAIL="" ADMIN_PASSWORD="" CP_URL="" JOIN_TOKEN="" NODE_NAME="" CAPACITY="
 PLATFORMS="ps2,gc,wii" GPU="auto" LIBRARY_DIR=/srv/cloudplay/library BIOS_DIR=/srv/cloudplay/bios
 FIREWALL=1 WITH_LANDING=0 REBOOT_OK=0 SKIP_BUILD=0 DIRECT_PORTS=yes
 TAG="${CLOUDPLAY_TAG:-local}"
+# Prefijo de las imágenes: "cloudplay/" = compiladas en esta máquina; "ghcr.io/USUARIO/cloudplay-" = ya compiladas en GHCR
+IMAGES="${CLOUDPLAY_IMAGES:-cloudplay/}"
 
 usage() {
   sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
@@ -47,6 +49,8 @@ Comunes:
   --no-firewall               no tocar ufw
   --reboot-ok                 reiniciar solo si hace falta (driver NVIDIA) y seguir después
   --skip-build                no compilar imágenes (si ya están o vienen de un registro)
+  --images PREFIJO            usar imágenes ya compiladas (p. ej. ghcr.io/usuario/cloudplay-) en vez de compilar
+  --version VERSIÓN           etiqueta de esas imágenes (v1.0.0, latest…)
 EOF
 }
 
@@ -73,6 +77,8 @@ while [ $# -gt 0 ]; do
     --with-landing) WITH_LANDING=1 ;;
     --reboot-ok) REBOOT_OK=1 ;;
     --skip-build) SKIP_BUILD=1 ;;
+    --images) IMAGES="$2"; shift ;;
+    --version) TAG="$2"; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Opción desconocida: $1" >&2; usage; exit 2 ;;
   esac
@@ -103,6 +109,8 @@ ensure_secret() {
   if [ -z "$cur" ] || [[ "$cur" == CAMBIA_ESTO* ]]; then set_env "$1" "$2" "$(rand "${3:-40}")"; fi
 }
 lan_ip() { hostname -I 2>/dev/null | awk '{print $1}'; }
+# Con imágenes de un registro (GHCR) se descargan; si no, se compilan aquí
+from_registry() { [ "$IMAGES" != "cloudplay/" ]; }
 
 [ "$(id -u)" -eq 0 ] || die "Ejecútalo como root (sudo)."
 case "$ROLE" in orchestrator|node|all) ;; *) usage; die "Indica --role orchestrator, node o all" ;; esac
@@ -115,6 +123,8 @@ if [ -r /etc/os-release ]; then . /etc/os-release; fi
 
 mkdir -p "$ETC"
 echo "$ROLE" > "$ETC/role"
+# Versiones publicadas en GitHub: `cloudplay update` sabe de dónde bajar la siguiente
+if [ -f "$SRC/RELEASE" ]; then cp "$SRC/RELEASE" "$ETC/release"; fi
 
 # ------------------------------------------------------------------ paquetes base
 say "Paquetes base"
@@ -165,7 +175,7 @@ bash "$DEST/deploy/branding/apply.sh" "$ROLE" "${DOMAIN:-$(echo "$CP_URL" | sed 
   printf '%q %q ' --role "$ROLE"
   for kv in "--domain=$DOMAIN" "--landing-domain=$LANDING_DOMAIN" "--cp-url=$CP_URL" "--name=$NODE_NAME" \
             "--capacity=$CAPACITY" "--platforms=$PLATFORMS" "--gpu=$GPU" "--library=$LIBRARY_DIR" "--bios=$BIOS_DIR" \
-            "--direct-ports=$DIRECT_PORTS"; do
+            "--direct-ports=$DIRECT_PORTS" "--images=$IMAGES" "--version=$TAG"; do
     k="${kv%%=*}"; v="${kv#*=}"
     if [ -n "$v" ]; then printf '%q %q ' "$k" "$v"; fi
   done
@@ -246,6 +256,7 @@ install_orchestrator() {
   fi
   set_env "$env" COMPOSE_PROFILES "$profiles"
   set_env "$env" CLOUDPLAY_TAG "$TAG"
+  set_env "$env" CLOUDPLAY_IMAGES "$IMAGES"
   # Los nodos reciben el S3 al darse de alta: no va en el instalador público
   set_env "$env" CP_NODE_S3_ACCESS_KEY "$(get_env "$env" S3_ACCESS_KEY)"
   set_env "$env" CP_NODE_S3_SECRET_KEY "$(get_env "$env" S3_SECRET_KEY)"
@@ -277,7 +288,12 @@ install_orchestrator() {
 
   say "Construyendo y arrancando el orquestador"
   cd "$DEST"
-  if [ "$SKIP_BUILD" = 0 ]; then docker compose build -q; fi
+  if from_registry; then
+    say "Descargando imágenes ($IMAGES*:$TAG)"
+    docker compose pull -q api-a
+  elif [ "$SKIP_BUILD" = 0 ]; then
+    docker compose build -q
+  fi
   unit cloudplay "$DEST" "CloudPlay orquestador"
   systemctl daemon-reload
   systemctl enable cloudplay >/dev/null 2>&1 || true
@@ -311,7 +327,7 @@ set -euo pipefail
 [ "\$(id -u)" -eq 0 ] || { echo "Ejecútalo con sudo"; exit 1; }
 TMP=\$(mktemp -d)
 curl -fsSL "https://$domain/install/cloudplay.tar.gz" | tar -xz -C "\$TMP"
-exec bash "\$TMP/deploy/install/install.sh" --role node --cp-url "https://$domain" "\$@"
+exec bash "\$TMP/deploy/install/install.sh" --role node --cp-url "https://$domain" --images "$IMAGES" --version "$TAG" "\$@"
 EOF
   chmod 644 "$dist/node.sh" "$dist/cloudplay.tar.gz"
 }
@@ -475,7 +491,7 @@ install_node() {
   set_env "$wenv" LIBRARY_DIR "$LIBRARY_DIR"
   set_env "$wenv" BIOS_DIR "$BIOS_DIR"
   set_env "$wenv" DATA_DIR /var/lib/cloudplay
-  set_env "$wenv" SESSION_IMAGE "cloudplay/session:$TAG"
+  set_env "$wenv" SESSION_IMAGE "${IMAGES}session:$TAG"
   set_env "$wenv" SESSION_CPUS "$(( cores / cap > 2 ? cores / cap : 2 ))"
   if [ "$ROLE" = all ]; then
     # Misma máquina: el agente entra por la red interna de Docker (alias "api" = las dos réplicas) y usa el S3 directo
@@ -489,6 +505,7 @@ install_node() {
     echo "LIBRARY_DIR=$LIBRARY_DIR"
     echo "DATA_DIR=/var/lib/cloudplay"
     echo "CLOUDPLAY_TAG=$TAG"
+    echo "CLOUDPLAY_IMAGES=$IMAGES"
     if [ "$ROLE" = all ]; then echo "COMPOSE_FILE=docker-compose.yml:docker-compose.all.yml"; fi
   } > "$DEST/worker/.env"
 
@@ -503,7 +520,11 @@ install_node() {
   fi
 
   cd "$DEST/worker"
-  if [ "$SKIP_BUILD" = 0 ]; then
+  if from_registry; then
+    say "Descargando imágenes del nodo ($IMAGES*:$TAG)"
+    docker pull -q "${IMAGES}session:$TAG" >/dev/null
+    docker compose pull -q
+  elif [ "$SKIP_BUILD" = 0 ]; then
     say "Construyendo la imagen de sesión (emuladores + GStreamer). La primera vez tarda un rato."
     docker build -q -t "cloudplay/session:$TAG" session >/dev/null
     docker compose build -q

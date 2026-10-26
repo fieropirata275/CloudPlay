@@ -10,6 +10,25 @@ Dos tipos de máquina:
 Todo arranca con una animación que dice qué es cada máquina (orquestador, nodo gaming o ambos) y
 la consola muestra el rol, la IP y la URL.
 
+### Todo sale de GitHub, gratis
+
+Cada versión publicada en GitHub trae el código (Release, verificado con SHA256) y las imágenes ya compiladas
+en GHCR (`ghcr.io/fieropirata275/cloudplay-{control-plane,agent,session,web}`). Un único comando vale para todo:
+
+```bash
+GET="curl -fsSL https://github.com/fieropirata275/cloudplay/releases/latest/download/get.sh"
+$GET | sudo bash -s -- orchestrator --domain play.empresa.com            # orquestador
+$GET | sudo bash -s -- node --cp-url https://play.empresa.com --join-token T  # nodo gaming
+$GET | sudo bash -s -- all --domain play.empresa.com                     # los dos en una máquina
+$GET | sudo bash -s -- proxmox node-template --cp-url https://play.empresa.com --join-token T
+$GET | sudo bash -s -- iso --role node --cp-url https://play.empresa.com --join-token T
+$GET | bash -s -- helm --domain play.empresa.com --tunnel-token T        # Kubernetes
+```
+
+Fija una versión con `CLOUDPLAY_VERSION=v1.0.0` (por defecto, la última). `sudo cloudplay update` actualiza
+sin cortes a la última Release. Para publicar una versión nueva: `git tag v1.1.0 && git push origin v1.1.0`
+(GitHub Actions compila, sube las imágenes y crea la Release).
+
 ---
 
 ## Publicar al mundo en 2 pasos (Cloudflare Tunnel)
@@ -32,8 +51,8 @@ Sin abrir puertos, sin IP fija y con TLS de Cloudflare.
 **Paso 2 · en el servidor**
 
 ```bash
-sudo ./deploy/install/install.sh --role orchestrator --domain play.empresa.com \
-  --tunnel-token <TOKEN> --cf-turn-key-id <KEY_ID> --cf-turn-token <API_TOKEN>
+curl -fsSL https://github.com/fieropirata275/cloudplay/releases/latest/download/get.sh | sudo bash -s -- \
+  orchestrator --domain play.empresa.com --tunnel-token <TOKEN> --cf-turn-key-id <KEY_ID> --cf-turn-token <API_TOKEN>
 ```
 
 O, sin tocar la terminal, con la ISO (abajo) creada con esas mismas opciones.
@@ -66,8 +85,8 @@ Al acabar, el instalador enseña la URL, el administrador y **la línea para añ
 ## Opción B · Un comando en un Ubuntu ya instalado
 
 ```bash
-# Orquestador (desde una copia de este repositorio)
-sudo ./deploy/install/install.sh --role orchestrator --domain play.empresa.com [--tunnel-token ...]
+# Orquestador
+curl -fsSL https://github.com/fieropirata275/cloudplay/releases/latest/download/get.sh | sudo bash -s -- orchestrator --domain play.empresa.com [--tunnel-token ...]
 
 # Nodo gaming: el orquestador sirve su propio instalador
 curl -fsSL https://play.empresa.com/install/node.sh | sudo bash -s -- --join-token <TOKEN_DE_UNIÓN>

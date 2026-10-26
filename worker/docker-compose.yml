@@ -7,7 +7,7 @@
 services:
   agent:
     build: ./agent
-    image: cloudplay/agent:${CLOUDPLAY_TAG:-local}
+    image: ${CLOUDPLAY_IMAGES:-cloudplay/}agent:${CLOUDPLAY_TAG:-local}
     # Tras un apagón vuelve solo y adopta las partidas que sigan vivas
     restart: always
     env_file: worker.env

@@ -75,12 +75,46 @@ cmd_logs() {
 
 # Actualización sin cortes: réplicas de la API de una en una; en los nodos, las partidas en curso siguen
 # con la imagen vieja y las nuevas arrancan con la nueva.
+images_prefix() { get_env "$DEST/.env" CLOUDPLAY_IMAGES 2>/dev/null | grep . || get_env "$DEST/worker/.env" CLOUDPLAY_IMAGES; }
+
+# Descarga una versión publicada en GitHub Releases y comprueba su SHA256. Deja la ruta en $REL_SRC y la versión en $REL_TAG.
+fetch_release() {
+  local want="${1:-latest}" repo base tmp
+  repo=$(cat "$ETC/release" 2>/dev/null) || die "Esta instalación no viene de GitHub Releases (falta $ETC/release)"
+  if [ "$want" = latest ]; then base="https://github.com/$repo/releases/latest/download"; else base="https://github.com/$repo/releases/download/$want"; fi
+  base="${CLOUDPLAY_RELEASE_BASE:-$base}"
+  tmp=$(mktemp -d)
+  say "Descargando $want de $repo"
+  curl -fsSL "$base/cloudplay.tar.gz" -o "$tmp/cloudplay.tar.gz"
+  curl -fsSL "$base/SHA256SUMS" -o "$tmp/SHA256SUMS"
+  (cd "$tmp" && grep ' cloudplay.tar.gz$' SHA256SUMS | sha256sum -c --quiet -) || die "La descarga no coincide con su SHA256: no se instala"
+  mkdir -p "$tmp/src" && tar -xzf "$tmp/cloudplay.tar.gz" -C "$tmp/src"
+  REL_SRC="$tmp/src"
+  REL_TAG=$(cat "$tmp/src/VERSION" 2>/dev/null || echo "$want")
+}
+
+# Actualización sin cortes: réplicas de la API de una en una; en los nodos, las partidas en curso siguen
+# con la imagen vieja y las nuevas arrancan con la nueva.
+#   cloudplay update                  → última versión de GitHub (imágenes de GHCR) o compila la copia local
+#   cloudplay update --version v1.2.0 → una versión concreta
+#   cloudplay update /ruta|fichero.tgz [--no-build]
 cmd_update() {
   need_root
-  local build=1 src=""
-  for a in "$@"; do if [ "$a" = --no-build ]; then build=0; else src="$a"; fi; done
+  local build=1 src="" version="" registry=0 prefix extra=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --no-build) build=0 ;;
+      --version) version="$2"; shift ;;
+      *) src="$1" ;;
+    esac
+    shift
+  done
+  prefix=$(images_prefix)
+  [ -n "$prefix" ] && [ "$prefix" != "cloudplay/" ] && registry=1
   if [ -z "$src" ]; then
-    if [ -d "$DEST/.git" ]; then (cd "$DEST" && git pull --ff-only); src="$DEST"
+    if [ "$registry" = 1 ]; then
+      fetch_release "${version:-latest}"; src="$REL_SRC"; extra=(--version "$REL_TAG"); build=0
+    elif [ -d "$DEST/.git" ]; then (cd "$DEST" && git pull --ff-only); src="$DEST"
     elif is_node && ! is_orch; then
       local url; url=$(get_env "$WENV" CP_URL | sed 's#^wss://#https://#; s#^ws://#http://#')
       src=$(mktemp -d); say "Descargando la versión del orquestador ($url)"
@@ -91,9 +125,10 @@ cmd_update() {
   say "Instalando ficheros nuevos"
   # shellcheck disable=SC2046
   eval set -- "$(cat "$ETC/install.args")"
-  bash "$src/deploy/install/install.sh" "$@" --skip-build >/dev/null
+  bash "$src/deploy/install/install.sh" "$@" "${extra[@]}" --skip-build >/dev/null
   if is_orch; then
-    if [ "$build" = 1 ]; then say "Construyendo la imagen de la API"; dc build -q api-a; fi
+    if [ "$registry" = 1 ]; then say "Descargando la imagen nueva de la API"; dc pull -q api-a
+    elif [ "$build" = 1 ]; then say "Construyendo la imagen de la API"; dc build -q api-a; fi
     for r in api-a api-b; do
       say "Renovando $r (la otra réplica sigue atendiendo)"
       dc up -d --no-deps --force-recreate "$r"
@@ -101,12 +136,17 @@ cmd_update() {
       sleep 3
     done
     dc up -d --remove-orphans
-    ok "Orquestador actualizado sin cortes"
+    ok "Orquestador actualizado sin cortes${extra[1]:+ a ${extra[1]}}"
   fi
   if is_node; then
-    if [ "$build" = 1 ]; then
+    local tag; tag=$(get_env "$DEST/worker/.env" CLOUDPLAY_TAG)
+    if [ "$registry" = 1 ]; then
+      say "Descargando imágenes nuevas del nodo"
+      docker pull -q "${prefix}session:$tag" >/dev/null
+      dw pull -q
+    elif [ "$build" = 1 ]; then
       say "Construyendo imágenes del nodo"
-      docker build -q -t "cloudplay/session:$(get_env "$DEST/worker/.env" CLOUDPLAY_TAG)" "$DEST/worker/session" >/dev/null
+      docker build -q -t "cloudplay/session:$tag" "$DEST/worker/session" >/dev/null
       dw build -q
     fi
     dw up -d --remove-orphans   # el agente adopta las partidas en curso al volver
@@ -201,12 +241,13 @@ case "${1:-help}" in
   resume) cmd_resume ;;
   stop-sessions) cmd_stop_sessions ;;
   credentials) need_root; cat /root/cloudplay-credenciales.txt ;;
+  version) echo "$(get_env "$DEST/.env" CLOUDPLAY_TAG | grep . || get_env "$DEST/worker/.env" CLOUDPLAY_TAG) ($(images_prefix))" ;;
   *) cat <<'EOF'
 cloudplay — operar CloudPlay en esta máquina
 
   status                 estado de servicios, nodos y partidas
   logs [servicio]        registros en vivo (api-a, caddy, cloudflared, agent…)
-  update [carpeta|tgz] [--no-build]   actualizar sin cortar el servicio
+  update [--version V]   actualizar sin cortar el servicio (o update /ruta|tgz [--no-build])
   backup | restore F     copia de base de datos y partidas guardadas (diaria automática a las 4:20)
   credentials            URL, administrador y token de unión
   join-token             token para unir nodos

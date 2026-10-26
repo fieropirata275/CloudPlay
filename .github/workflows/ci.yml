@@ -1,0 +1,32 @@
+# Pruebas en cada push: API, scripts de despliegue, chart de Helm y JS de las teles.
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Tests de la API
+        run: |
+          pip install -q -r control-plane/requirements.txt aiosqlite fakeredis pytest httpx
+          cd control-plane && pytest -q tests
+      - name: Shellcheck de los scripts de despliegue
+        run: |
+          sudo apt-get install -y -qq shellcheck
+          shellcheck -S warning deploy/get.sh deploy/install/install.sh deploy/install/cloudplay deploy/install/continue.sh \
+            deploy/install/ups/cloudplay-ups deploy/iso/build-iso.sh deploy/iso/firstboot.sh deploy/proxmox/cloudplay-pve.sh \
+            deploy/branding/apply.sh
+      - uses: azure/setup-helm@v4
+      - name: Chart de Helm
+        run: helm lint deploy/helm/cloudplay --set cloudflared.token=x
+      - name: El cliente web sigue siendo ES5 (teles antiguas)
+        run: |
+          npm i -s --no-save acorn@8
+          node -e "const a=require('acorn'),fs=require('fs');for(const f of fs.readdirSync('clients/web/js'))a.parse(fs.readFileSync('clients/web/js/'+f,'utf8'),{ecmaVersion:5});console.log('ES5 ok')"

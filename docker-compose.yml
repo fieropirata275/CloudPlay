@@ -7,7 +7,7 @@
 # Arranque manual: cp .env.example .env && docker compose up -d --build
 x-api: &api
   build: ./control-plane
-  image: cloudplay/control-plane:${CLOUDPLAY_TAG:-local}
+  image: ${CLOUDPLAY_IMAGES:-cloudplay/}control-plane:${CLOUDPLAY_TAG:-local}
   restart: always
   env_file: .env
   environment:

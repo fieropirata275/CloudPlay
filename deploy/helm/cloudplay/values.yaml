@@ -2,10 +2,11 @@
 domain: play.example.com
 landingDomain: ""
 
+# Imágenes públicas que publica GitHub Actions en cada versión (get.sh helm las fija a la versión descargada)
 images:
-  controlPlane: cloudplay/control-plane:1.0.0
-  web: cloudplay/web:1.0.0
-  agent: cloudplay/agent:1.0.0
+  controlPlane: ghcr.io/fieropirata275/cloudplay-control-plane:latest
+  web: ghcr.io/fieropirata275/cloudplay-web:latest
+  agent: ghcr.io/fieropirata275/cloudplay-agent:latest
   postgres: postgres:16-alpine
   redis: redis:7-alpine
   s3: chrislusf/seaweedfs:4.45
@@ -77,4 +78,4 @@ gaming:
   libraryPath: /srv/cloudplay/library
   biosPath: /srv/cloudplay/bios
   dataPath: /var/lib/cloudplay
-  sessionImage: cloudplay/session:1.0.0
+  sessionImage: ghcr.io/fieropirata275/cloudplay-session:latest

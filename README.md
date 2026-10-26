@@ -55,12 +55,27 @@ Ubuntu existente, plantillas de Proxmox, Helm para Kubernetes, autoescalado con 
 
 ```bash
 # Orquestador (master), publicado con Cloudflare Tunnel y vídeo por el TURN de Cloudflare: sin abrir puertos
-sudo ./deploy/install/install.sh --role orchestrator --domain play.empresa.com \
-  --tunnel-token <TOKEN> --cf-turn-key-id <KEY_ID> --cf-turn-token <API_TOKEN>
+curl -fsSL https://github.com/fieropirata275/cloudplay/releases/latest/download/get.sh | sudo bash -s -- \
+  orchestrator --domain play.empresa.com --tunnel-token <TOKEN> --cf-turn-key-id <KEY_ID> --cf-turn-token <API_TOKEN>
 
 # Nodo gaming (slave), en cada máquina con GPU: se da de alta solo
-curl -fsSL https://play.empresa.com/install/node.sh | sudo bash -s -- --join-token <TOKEN_DE_UNIÓN>
+curl -fsSL https://github.com/fieropirata275/cloudplay/releases/latest/download/get.sh | sudo bash -s -- \
+  node --cp-url https://play.empresa.com --join-token <TOKEN_DE_UNIÓN>
 ```
+
+Todo se descarga de GitHub: el código de la última **Release** (verificado con SHA256) y las imágenes ya
+compiladas de **GHCR** (`ghcr.io/fieropirata275/cloudplay-{control-plane,agent,session,web}`), así que no se
+compila nada en el servidor. Otros modos del mismo comando:
+
+| Modo | Ejemplo |
+|---|---|
+| Orquestador + nodo en una máquina | `… \| sudo bash -s -- all --domain play.empresa.com` |
+| Proxmox (en el host) | `… \| sudo bash -s -- proxmox node-template --cp-url https://play.empresa.com --join-token T` |
+| ISO autoinstalable | `… \| sudo bash -s -- iso --role node --cp-url https://play.empresa.com --join-token T` |
+| Kubernetes (Helm) | `… \| bash -s -- helm --domain play.empresa.com --tunnel-token T` |
+| Versión concreta | `curl … \| sudo CLOUDPLAY_VERSION=v1.0.0 bash -s -- orchestrator …` |
+
+Actualizar sin cortes a la última versión publicada: `sudo cloudplay update`.
 
 | Carpeta | Para qué |
 |---|---|
