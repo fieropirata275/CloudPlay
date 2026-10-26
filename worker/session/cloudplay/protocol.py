@@ -16,12 +16,14 @@ paquetes no deja botones pegados: el siguiente arregla el estado. 16 bytes LE:
   14   u16  seq      contador con vuelta; se descartan paquetes viejos
 
 type=2 (4 bytes): botón Guide/Home -> [2, pad, pressed, 0]
+type=4 (6 bytes): ratón del jugador (accesorios GunCon 2 / ratón USB) -> [4, botones, x u16, y u16]
+                  x, y de 0 a 65535 sobre la imagen; estado completo, como los mandos
 """
 import struct
 
 PAD_STATE = struct.Struct("<BBHhhhhBBH")
 assert PAD_STATE.size == 16
-TYPE_PAD, TYPE_GUIDE = 1, 2
+TYPE_PAD, TYPE_GUIDE, TYPE_MOUSE = 1, 2, 4
 
 
 class InputDecoder:
@@ -42,6 +44,8 @@ class InputDecoder:
             return pad, ("pad", buttons, lx, ly, rx, ry, lt, rt)
         if len(data) == 4 and data[0] == TYPE_GUIDE and data[1] < self.max_pads:
             return data[1], ("guide", bool(data[2]))
+        if len(data) == 6 and data[0] == TYPE_MOUSE:
+            return 0, ("mouse", data[1] & 7, data[2] | data[3] << 8, data[4] | data[5] << 8)
         return None
 
     def reset(self) -> None:

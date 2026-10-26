@@ -41,6 +41,20 @@ def session_options() -> dict:
         return o if isinstance(o, dict) else {}
     except ValueError:
         return {}
+
+
+OPTIONS = session_options()
+MIC_ACCESSORIES = {"singstar", "headset", "gc_mic"}
+KEYBOARD_ACCESSORIES = {"usb_keyboard", "gc_keyboard"}
+MOUSE_ACCESSORIES = {"usb_mouse", "guncon2"}
+
+
+def wants_mic(o: dict) -> bool:
+    return bool(o.get("mic")) or bool(MIC_ACCESSORIES & set(o.get("accessories") or []))
+
+
+def wants_camera(o: dict) -> bool:
+    return bool(o.get("camera")) or "eyetoy" in (o.get("accessories") or [])
 PLAYER_UID = PLAYER_GID = 1000
 
 
@@ -74,6 +88,17 @@ class Session:
 
         from .streamer import Streamer  # importa GStreamer tras bajar privilegios
 
+        # Teclado / ratón del jugador en el display virtual: solo si la partida lleva un accesorio que los usa
+        self.xin = None
+        acc = set(OPTIONS.get("accessories") or [])
+        if acc & (KEYBOARD_ACCESSORIES | MOUSE_ACCESSORIES):
+            try:
+                from .xinject import XInject
+                w, h = (int(v) for v in E.get("RESOLUTION", "1280x720").split("x"))
+                self.xin = XInject(DISPLAY, w, h)
+            except (OSError, ValueError) as e:
+                log.warning("sin teclado/ratón del jugador: %s", e)
+
         # Wiimotes / Balance Board reales del jugador: solo en Wii (Dolphin los busca por hidapi)
         self.hid = None
         if PLATFORM == "wii":
@@ -92,6 +117,10 @@ class Session:
             max_bitrate_kbps=int(E.get("MAX_BITRATE_KBPS", "20000")),
             ice_port_range=ice_port_range(),
             on_hid=self.hid.on_message if self.hid else None,
+            mic=wants_mic(OPTIONS),
+            camera=wants_camera(OPTIONS),
+            cam_device=E.get("CAMERA_DEVICE") or None,
+            mic_sink=E.get("MIC_SINK", "pulsesink device=cloudplay_mic sync=false"),
         )
 
     # ------------------------------------------------------------ emulator
@@ -137,6 +166,12 @@ class Session:
         idx, ev = res
         if ev[0] == "pad":
             self.pads[idx].update(*ev[1:])
+        elif ev[0] == "mouse":
+            if self.xin:
+                if not getattr(self, "_mouse_seen", False):
+                    self._mouse_seen = True
+                    log.info("ratón del jugador activo")
+                self.xin.mouse(*ev[1:])
         else:
             self.pads[idx].set_guide(ev[1])
 
@@ -148,6 +183,11 @@ class Session:
                 self.streamer.notify({"t": "toast", "text": t})
         elif t == "quit":
             self.loop.call_soon_threadsafe(self.stopping.set)
+        elif t == "key" and self.xin:
+            ok = self.xin.key(msg.get("c"), bool(msg.get("d")))
+            if ok and not getattr(self, "_keys_seen", False):
+                self._keys_seen = True
+                log.info("teclado del jugador activo (%s)", msg.get("c"))
 
     # ---------------------------------------------------------- signaling
     def send_threadsafe(self, msg: dict) -> None:
@@ -162,6 +202,8 @@ class Session:
     def _restart_stream(self) -> None:
         for p in self.pads:
             p.release_all()
+        if self.xin:
+            self.xin.release_all()
         if self.hid:
             self.hid.unlink_all()  # el cliente nuevo vuelve a vincular los suyos
         self.decoder.reset()

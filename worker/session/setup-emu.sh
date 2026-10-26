@@ -36,6 +36,9 @@ for s in ("Wiimote2", "Wiimote3", "Wiimote4", "BalanceBoard"):
 open(path, "w").write(text)
 PY
 
+# Accesorios que trae el jugador (micros, EyeToy, Buzz, guitarra, batería, GunCon, bongos, teclado...)
+python3 /opt/cloudplay/accessories.py "$HOME/.config/PCSX2/inis/PCSX2.ini" "$D/Config/Dolphin.ini" "$D/Config" || true
+
 # Las partidas viven en /saves (persistidas por el agente)
 for sub in GC Wii StateSaves; do
   rm -rf "${D:?}/$sub"

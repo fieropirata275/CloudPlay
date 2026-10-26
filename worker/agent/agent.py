@@ -45,6 +45,8 @@ DRI_NODES = [d for d in E.get("DRI_NODES", "/dev/dri/renderD128").split(",") if 
 SESSION_IMAGE = E.get("SESSION_IMAGE", "cloudplay/session:latest")
 LIBRARY_DIR = E.get("LIBRARY_DIR", "/srv/cloudplay/library")  # ruta del HOST
 BIOS_DIR = E.get("BIOS_DIR", "/srv/cloudplay/bios")  # ruta del HOST
+# Cámaras virtuales (v4l2loopback, las crea el instalador): /dev/video{CAMERA_BASE + hueco} para el EyeToy
+CAMERA_BASE = int(E.get("CAMERA_BASE", "10"))
 DATA_DIR = Path(E.get("DATA_DIR", "/var/lib/cloudplay"))  # misma ruta dentro y fuera
 ICE_PORT_BASE = int(E.get("ICE_PORT_BASE", "40000"))
 ICE_PORTS_PER_SLOT = int(E.get("ICE_PORTS_PER_SLOT", "20"))
@@ -286,6 +288,15 @@ class Agent:
     def _run_container(self, msg: dict, slot: int, saves: Path):
         sid = msg["session_id"]
         g = self._gpu_kwargs(slot)
+        opts = msg.get("options") or {}
+        cam_env, cam_dev = {}, []
+        if opts.get("camera") or "eyetoy" in (opts.get("accessories") or []):
+            host_cam = f"/dev/video{CAMERA_BASE + slot}"
+            if os.path.exists(host_cam):
+                # dentro del contenedor es /dev/video0: PCSX2 usa esa si no se le dice otra
+                cam_dev, cam_env = [f"{host_cam}:/dev/video0:rwm"], {"CAMERA_DEVICE": "/dev/video0"}
+            else:
+                log.warning("la sesión pide cámara pero no existe %s (¿v4l2loopback cargado?)", host_cam)
         port_lo = ICE_PORT_BASE + slot * ICE_PORTS_PER_SLOT
         env = {
             "SESSION_ID": sid,
@@ -301,7 +312,8 @@ class Agent:
             "IDLE_TIMEOUT": IDLE_TIMEOUT,
             "MAX_PADS": MAX_PADS,
             # Wiimote real, micro, cámara y accesorios que trae el jugador (los valida el orquestador)
-            "SESSION_OPTIONS": json.dumps(msg.get("options") or {}),
+            "SESSION_OPTIONS": json.dumps(opts),
+            **cam_env,
             **g["env"],
             **EXTRA_ENV,
         }
@@ -318,7 +330,7 @@ class Agent:
                 BIOS_DIR: {"bind": "/bios", "mode": "ro"},
                 str(saves): {"bind": "/saves", "mode": "rw"},
             },
-            devices=["/dev/uinput:/dev/uinput:rwm", *g["devices"]],
+            devices=["/dev/uinput:/dev/uinput:rwm", *g["devices"], *cam_dev],
             device_cgroup_rules=["c 13:* rmw"],  # nodos /dev/input/event* creados dentro
             device_requests=g["device_requests"] or None,
             cap_drop=["ALL"],

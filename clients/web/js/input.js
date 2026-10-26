@@ -74,6 +74,9 @@
     this.send = opts.send;
     this.onMenu = opts.onMenu || function () {};
     this.keymap = opts.isTV ? KEYS_TV : KEYS_PC;
+    // Partida con teclado (teclado USB de PS2, teclado de GameCube): las teclas van tal cual a la consola
+    this.rawKeys = !!opts.rawKeys;
+    this.sendControl = opts.sendControl || function () {};
     this.enabled = false;
     this.keyButtons = 0;
     this.last = [];
@@ -119,6 +122,12 @@
       if (e.type === 'keydown' && !e.repeat) this.onMenu();
       return;
     }
+    if (this.rawKeys && e.code) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!e.repeat) this.sendControl({ t: 'key', c: e.code, d: e.type === 'keydown' ? 1 : 0 });
+      return;
+    }
     var b = this.keymap[code];
     if (b === undefined) return;
     e.preventDefault();
@@ -137,7 +146,8 @@
   InputManager.prototype._readPads = function () {
     var out = [], list = (root.navigator.getGamepads && root.navigator.getGamepads()) || [];
     for (var i = 0; i < list.length; i++) if (list[i] && list[i].connected !== false) out.push(list[i]);
-    return out.slice(0, MAX_PADS);
+    // un receptor de Buzz! son 4 jugadores
+    return (CP.Pads.players ? CP.Pads.players(out) : out).slice(0, MAX_PADS);
   };
 
   // Cualquier mando (estándar, con perfil o configurado con el asistente) pasa por CP.Pads (js/pads.js)

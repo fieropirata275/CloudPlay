@@ -431,3 +431,15 @@ label input { margin-top: 0.3rem; color: var(--glass); font-size: 1rem; }
 @media (prefers-reduced-motion: reduce) {
   .pfx, .pfx-sil, .pfx-towers i, .pfx-cube i, .pfx-leds i { animation: none !important; transition: opacity 0.2s !important; stroke-dashoffset: 0; }
 }
+
+/* Accesorios de la partida */
+.acc-card { max-width: 32rem; }
+.acc-list { display: grid; grid-template-columns: 1fr 1fr; grid-gap: 0.5rem; }
+.acc-list .acc { text-align: left; padding: 0.7rem 0.8rem; white-space: normal; }
+.acc-list .acc b { display: block; color: var(--glass); font-size: 0.92rem; }
+.acc-list .acc small { display: block; color: var(--mist); font-size: 0.75rem; margin-top: 0.15rem; line-height: 1.3; }
+.acc-list .acc.on { border-color: var(--led); box-shadow: inset 0 0 0 1px var(--led); }
+.acc-list .acc.on b::after { content: " ✓"; color: var(--led); }
+@media (max-width: 480px) { .acc-list { grid-template-columns: 1fr; } }
+/* Con GunCon 2 o ratón USB, el cursor apunta sobre el vídeo */
+.player.aim #video { cursor: crosshair; }

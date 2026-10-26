@@ -481,6 +481,23 @@ install_node() {
     cap="$CAPACITY"
   fi
 
+  # Cámaras virtuales para el EyeToy (la cámara del jugador viaja a la nube): una por hueco, /dev/video10...
+  # Opcional: si el kernel no puede, todo funciona igual salvo la cámara.
+  if ! modinfo v4l2loopback >/dev/null 2>&1; then
+    apt-get install -y -qq "linux-modules-extra-$(uname -r)" >/dev/null 2>&1 || apt-get install -y -qq v4l2loopback-dkms >/dev/null 2>&1 || true
+  fi
+  if modinfo v4l2loopback >/dev/null 2>&1; then
+    nrs=$(seq -s, 10 $((9 + cap)))
+    labels=$(for i in $(seq 1 "$cap"); do printf 'CloudPlay Camera %s,' "$i"; done | sed 's/,$//')
+    printf 'options v4l2loopback devices=%s video_nr=%s exclusive_caps=1 card_label="%s"\n' "$cap" "$nrs" "$labels" \
+      > /etc/modprobe.d/cloudplay-v4l2loopback.conf
+    modprobe -r v4l2loopback 2>/dev/null || true
+    modprobe v4l2loopback 2>/dev/null && echo v4l2loopback >> /etc/modules-load.d/cloudplay.conf \
+      || warn "No se pudo cargar v4l2loopback: el EyeToy no tendrá cámara"
+  else
+    warn "Sin v4l2loopback en este kernel: el EyeToy no tendrá cámara (el resto funciona igual)"
+  fi
+
   mkdir -p "$LIBRARY_DIR"/{ps2,gc,wii} "$BIOS_DIR" /var/lib/cloudplay
   set_env "$wenv" NODE_TOKEN ""
   set_env "$wenv" NODE_NAME "${NODE_NAME:-$(hostname -s)}"

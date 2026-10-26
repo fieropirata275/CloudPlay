@@ -1,3 +1,5 @@
+import json
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from typing import Literal
@@ -19,8 +21,8 @@ router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 # Accesorios que la consola de la nube puede emular con lo que el jugador tiene en su ordenador
 Accessory = Literal[
     "singstar", "headset", "eyetoy", "buzz", "guitar", "drums", "guncon2", "usb_keyboard", "usb_mouse",  # PS2
-    "gc_bongos", "gc_mic", "gc_keyboard",  # GameCube
-    "wii_speak", "wii_keyboard",  # Wii (Wiimote, Nunchuk, Classic, Balance Board... van por wii_real)
+    "gc_bongos", "gc_mic", "gc_keyboard", "gc_dancemat",  # GameCube
+    # Wii: Wiimote, Nunchuk, Classic, MotionPlus, guitarras y Balance Board van por wii_real (puente HID)
 ]
 
 
@@ -36,6 +38,13 @@ class CreateSession(BaseModel):
     options: SessionOptions = Field(default_factory=SessionOptions)
 
 
+def _opts(s: Session) -> dict:
+    try:
+        return json.loads(s.options or "{}")
+    except ValueError:
+        return {}
+
+
 def session_dict(s: Session, user: User, game: Game | None = None, position: int | None = None) -> dict:
     d = {
         "id": s.id,
@@ -43,6 +52,7 @@ def session_dict(s: Session, user: User, game: Game | None = None, position: int
         "error": s.error,
         "game_id": s.game_id,
         "created_at": s.created_at.isoformat() if s.created_at else None,
+        "options": _opts(s),
     }
     if game is not None:
         d["game"] = game_dict(game)

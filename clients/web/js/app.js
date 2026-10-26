@@ -91,6 +91,7 @@
   }
 
   // Mandos: prueba en vivo y asistente (js/padsui.js)
+  CP.Extras.init({ openSheet: openSheet, closeSheet: closeSheet, toast: toast });
   CP.PadsUI.init({
     openSheet: openSheet, closeSheet: closeSheet, toast: toast, modal: modal,
     inGame: function () { return !!state.player; }
@@ -369,22 +370,25 @@
   }
 
   /** Lo que el jugador trae a la partida: Wiimote real, micro, cámara, accesorios (lo emula la nube) */
-  function sessionOptions(game) {
-    var o = { wii_real: false, mic: false, camera: false, accessories: [] }, jobs = [];
+  function sessionOptions(game, preset) {
+    var o = { wii_real: false, mic: false, camera: false, accessories: [] }, jobs = [], cancelled = false;
     if (game && game.platform === 'wii' && CP.WiiLink && CP.WiiLink.supported) {
       jobs.push(CP.WiiLink.known().then(function (l) { o.wii_real = l.length > 0; }));
     }
-    if (game && CP.Extras) jobs.push(CP.Extras.optionsFor(game).then(function (x) {
+    if (game && CP.Extras) jobs.push((preset ? Promise.resolve(preset) : CP.Extras.optionsFor(game)).then(function (x) {
+      if (!x) { cancelled = true; return; }
       o.mic = !!x.mic; o.camera = !!x.camera; o.accessories = x.accessories || [];
     }));
-    return Promise.all(jobs).then(function () { return o; }, function () { return o; });
+    return Promise.all(jobs).then(function () { return cancelled ? null : o; }, function () { return o; });
   }
 
-  function startGame(gameId, tile) {
+  function startGame(gameId, tile, preset) {
     var game = (state.games || []).filter(function (x) { return x.id === gameId; })[0];
-    sessionOptions(game).then(function (options) {
+    sessionOptions(game, preset).then(function (options) {
+      if (!options) return null;  // el jugador canceló en la hoja de accesorios
       return CP.api('POST', '/api/sessions', { game_id: gameId, options: options });
     }).then(function (s) {
+      if (!s) return;
       state.session = s;
       // Elemento compartido: la carátula vuela hasta la silueta de la pantalla de arranque
       var art = tile && tile.querySelector('.case');
@@ -573,6 +577,10 @@
     if (!p || !menu.hidden) return;
     p.pauseInput(true);
     $('#menu-title').textContent = p.session.game ? p.session.game.title : 'Menú';
+    var g = p.session.game;
+    $('#menu-acc').hidden = !(g && CP.Extras.has(g));
+    $('#menu-mic').hidden = !p.localStream || !p.localStream.getAudioTracks().length;
+    $('#menu-mic').textContent = p.micMuted ? 'Activar el micro' : 'Silenciar el micro';
     $$('#quality .btn').forEach(function (b) { b.classList.toggle('on', parseInt(b.getAttribute('data-kbps'), 10) === state.quality); });
     openSheet(menu);
     CP.navSetActive(true);
@@ -590,6 +598,25 @@
     var p = state.player;
     if (!a || !p) return;
     if (a === 'resume') return closeMenu();
+    if (a === 'mic') {
+      p.micMuted = !p.micMuted;
+      p.setMicMuted(p.micMuted);
+      toast(p.micMuted ? 'Micro silenciado' : 'Micro activado');
+      return closeMenu();
+    }
+    if (a === 'accessories') {
+      var game = p.session.game;
+      closeSheet($('#game-menu'));
+      return CP.Extras.pick(game, { restart: true }).then(function (list) {
+        if (list === null) { CP.navSetActive(false); if (state.player) state.player.pauseInput(false); return; }
+        var sid = p.session.id;
+        p.control({ t: 'quit' });
+        endPlayer();
+        CP.api('DELETE', '/api/sessions/' + sid).catch(function () {});
+        toast('Reiniciando con los accesorios…');
+        setTimeout(function () { startGame(game.id, null, CP.Extras.toOptions(list)); }, 1500);
+      });
+    }
     if (a === 'pads') {
       // se cierra el menú sin devolver el mando al juego: lo devuelve la hoja de mandos al cerrarse
       closeSheet($('#game-menu'));

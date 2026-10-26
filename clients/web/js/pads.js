@@ -134,10 +134,33 @@
     return String(gp.id || 'Mando').replace(/\s*\((STANDARD GAMEPAD\s*)?Vendor:.*\)\s*$/i, '').replace(/^[0-9a-f]{1,4}-[0-9a-f]{1,4}-/i, '') || 'Mando';
   }
 
+  // Buzz! (Sony 054c:0002 con cable, 054c:1000 inalámbrico): 4 pulsadores en un solo dispositivo de 20 botones,
+  // 5 por jugador en orden rojo, amarillo, verde, naranja, azul. Se reparten como 4 mandos:
+  // rojo ✕/A, naranja ◯/B, verde □/X, azul △/Y, amarillo L1/LB (lo que espera PCSX2 para el Buzz)
+  var BUZZ_BITS = [0, 4, 2, 1, 3];
+  function isBuzz(gp) {
+    var k = vidpid(gp.id);
+    return k === '054c0002' || k === '054c1000';
+  }
+  function players(list) {
+    var out = [];
+    list.forEach(function (gp) {
+      if (!isBuzz(gp)) { out.push(gp); return; }
+      for (var p = 0; p < 4; p++) out.push({ buzz: gp, player: p, id: gp.id + ' #' + (p + 1), index: gp.index * 4 + p, mapping: 'buzz', buttons: [], axes: [] });
+    });
+    return out;
+  }
+  function readBuzz(v) {
+    var st = { buttons: 0, guide: false, lx: 0, ly: 0, rx: 0, ry: 0, lt: 0, rt: 0 };
+    for (var i = 0; i < 5; i++) if (btnVal(v.buzz, v.player * 5 + i) > 0.5) st.buttons |= (1 << BUZZ_BITS[i]);
+    return st;
+  }
+
   /**
    * Estado normalizado de un mando: {buttons (bits 0..15), guide, lx, ly, rx, ry (-1..1 sin zona muerta), lt, rt (0..1)}
    */
   function read(gp) {
+    if (gp.buzz) return readBuzz(gp);
     var st = { buttons: 0, guide: false, lx: 0, ly: 0, rx: 0, ry: 0, lt: 0, rt: 0 };
     var d = describe(gp);
     if (d.map) {
@@ -352,6 +375,8 @@
   CP.Pads = {
     read: read,
     list: list,
+    players: players,
+    isBuzz: isBuzz,
     find: find,
     describe: describe,
     ensureDb: ensureDb,

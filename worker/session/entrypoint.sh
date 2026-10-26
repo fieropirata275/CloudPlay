@@ -9,6 +9,8 @@ RUNTIME=/run/user/1000
 export DISPLAY=":${DISPLAY_NUM}" XDG_RUNTIME_DIR="$RUNTIME" HOME=/home/player
 
 mkdir -p "$RUNTIME" /dev/input /tmp/.X11-unix
+# Cámara virtual (v4l2loopback) para el EyeToy: la escribe el streamer y la lee PCSX2, los dos como "player"
+if [ -e /dev/video0 ]; then chmod 666 /dev/video0; fi
 chown player:player "$RUNTIME" && chmod 700 "$RUNTIME"
 chmod 1777 /tmp/.X11-unix
 

@@ -180,6 +180,8 @@
           <button class="btn" data-action="quality" data-kbps="15000">15 Mb</button>
         </div>
         <button class="btn" data-action="pads">Configurar mando</button>
+        <button class="btn" data-action="accessories" id="menu-acc" hidden>Accesorios</button>
+        <button class="btn" data-action="mic" id="menu-mic" hidden>Silenciar el micro</button>
         <button class="btn" data-action="stats">Ver datos de conexión</button>
         <button class="btn" data-action="detach">Salir y seguir en otra pantalla</button>
         <button class="btn danger" data-action="quit">Cerrar el juego</button>
@@ -193,6 +195,20 @@
       <h2 id="modal-title"></h2>
       <p id="modal-text" class="muted"></p>
       <div id="modal-actions" class="stack"></div>
+    </div>
+  </div>
+  <!-- Accesorios de la partida (js/extras.js) -->
+  <div id="acc-sheet" class="sheet modal" hidden>
+    <div class="sheet-card acc-card" role="dialog" aria-labelledby="acc-title">
+      <h2 id="acc-title">Accesorios</h2>
+      <p class="muted"><span id="acc-game"></span>: elige qué conectas a la consola. Lo pones tú desde tu ordenador.</p>
+      <div id="acc-list" class="acc-list"></div>
+      <p class="hint" id="acc-note"></p>
+      <button class="btn primary" id="acc-go">Jugar</button>
+      <div class="grid2">
+        <button class="btn" id="acc-none">Sin accesorios</button>
+        <button class="btn quiet" id="acc-cancel">Cancelar</button>
+      </div>
     </div>
   </div>
   <!-- Mandos: prueba en vivo y asistente. Va después de #modal: si los dos están abiertos, manda el modal -->
@@ -266,6 +282,7 @@
   <script src="js/wiilink.js"></script>
   <script src="js/padfx.js"></script>
   <script src="js/padsui.js"></script>
+  <script src="js/extras.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

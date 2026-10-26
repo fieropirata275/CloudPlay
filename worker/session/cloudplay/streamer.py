@@ -94,10 +94,18 @@ class Streamer:
         ice_port_range: tuple[int, int] | None = None,
         pulse_source: str = "cloudplay.monitor",
         on_hid: Callable[[bytes], None] | None = None,
+        mic: bool = False,
+        camera: bool = False,
+        mic_sink: str = "pulsesink device=cloudplay_mic sync=false",
+        cam_device: str | None = None,
     ):
         self.display, self.send, self.on_input, self.on_control = display, send, on_input, on_control
         self.on_hid = on_hid
         self.hid_ch = None
+        # Subida del jugador: su micro y su cámara (EyeToy) llegan por WebRTC y acaban en un micro y una cámara
+        # virtuales del contenedor, que los emuladores usan como si estuvieran enchufados
+        self.mic, self.camera, self.mic_sink, self.cam_device = mic, camera, mic_sink, cam_device
+        self.upstream = {"audio": 0, "video": 0}
         self.ice_servers, self.fps, self.pulse_source = ice_servers, fps, pulse_source
         self.encoder_name = pick_encoder(encoder)
         self.bitrate = bitrate_kbps
@@ -175,6 +183,16 @@ class Streamer:
                 if is_video and t.find_property("do-nack") is not None:
                     t.set_property("do-nack", True)
 
+            # Pistas de subida (después del bucle de arriba: esas sí son de recepción)
+            if self.mic:
+                self.webrtc.emit("add-transceiver", GstWebRTC.WebRTCRTPTransceiverDirection.RECVONLY,
+                                 Gst.Caps.from_string("application/x-rtp,media=audio,encoding-name=OPUS,payload=109,clock-rate=48000,encoding-params=(string)2"))
+            if self.camera:
+                self.webrtc.emit("add-transceiver", GstWebRTC.WebRTCRTPTransceiverDirection.RECVONLY,
+                                 Gst.Caps.from_string("application/x-rtp,media=video,encoding-name=VP8,payload=97,clock-rate=90000"))
+            if self.mic or self.camera:
+                self.webrtc.connect("pad-added", self._on_incoming)
+
             # Canales de datos: input sin orden ni reintentos (estado completo en cada paquete),
             # control fiable y ordenado.
             opts = Gst.Structure.new_from_string(
@@ -197,6 +215,42 @@ class Streamer:
 
             promise = Gst.Promise.new_with_change_func(self._on_offer_created, None)
             self.webrtc.emit("create-offer", None, promise)
+
+    def _on_incoming(self, _el, pad: Gst.Pad) -> None:
+        """Llega audio o vídeo del jugador: se decodifica hacia el micro / la cámara virtuales"""
+        if pad.get_direction() != Gst.PadDirection.SRC:
+            return
+        caps = pad.get_current_caps() or pad.query_caps(None)
+        media = caps.get_structure(0).get_string("media") if caps and caps.get_size() else None
+        if media == "audio":
+            desc = (f"queue ! rtpopusdepay ! opusdec plc=true ! audioconvert ! audioresample "
+                    f"! audio/x-raw,rate=48000,channels=1 ! identity name=up_audio ! {self.mic_sink}")
+        elif media == "video":
+            sink = f"v4l2sink device={self.cam_device} sync=false" if self.cam_device else "fakesink sync=false"
+            desc = (f"queue ! rtpvp8depay ! vp8dec ! videoconvert ! videoscale ! videorate "
+                    f"! video/x-raw,format=YUY2,width=640,height=480,framerate=30/1 ! identity name=up_video ! {sink}")
+        else:
+            return
+        with self.lock:
+            if self.pipe is None:
+                return
+            try:
+                b = Gst.parse_bin_from_description(desc, True)
+            except GLib.Error as e:
+                log.warning("no se pudo montar la subida de %s: %s", media, e.message)
+                return
+            self.pipe.add(b)
+            b.sync_state_with_parent()
+            pad.link(b.get_static_pad("sink"))
+            ident = b.get_by_name("up_" + media)
+            ident.get_static_pad("src").add_probe(Gst.PadProbeType.BUFFER, self._count_upstream, media)
+        log.info("recibiendo %s del jugador", "micro" if media == "audio" else "cámara")
+
+    def _count_upstream(self, _pad, _info, media):
+        n = self.upstream[media] = self.upstream[media] + 1
+        if n in (1, 100) or n % 3000 == 0:
+            log.info("subida de %s: %d tramas", media, n)
+        return Gst.PadProbeReturn.OK
 
     def _configure_ice(self) -> None:
         for srv in self.ice_servers:

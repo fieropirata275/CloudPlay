@@ -37,7 +37,13 @@ rm -f "$HERE/pad.log"
 cd "$HERE"
 DISPLAY=:99 python3 fake_agent.py "$NODE" > agent.log 2>&1 & PIDS+=($!)
 sleep 1.5
-if [ "${E2E_WII:-0}" = 1 ]; then
+if [ "${E2E_ACC:-0}" = 1 ]; then
+  python3 accessories.py
+  grep -h "opciones de la sesión" agent.log || true
+elif [ "${E2E_MEDIA:-0}" = 1 ]; then
+  python3 media.py
+  grep -h "opciones de la sesión" agent.log || true
+elif [ "${E2E_WII:-0}" = 1 ]; then
   rm -f wii_hid.json
   python3 wii_hid.py
   grep -h "opciones de la sesión" agent.log || true

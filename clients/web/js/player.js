@@ -22,8 +22,11 @@
     this.lastStats = null;
     this.rtt = 0;
     var self = this;
+    this.needs = CP.Extras ? CP.Extras.needs(this.session && this.session.options) : {};
     this.input = new CP.InputManager({
       isTV: opts.isTV,
+      rawKeys: !!this.needs.keyboard,
+      sendControl: function (m) { self.control(m); },
       send: function (buf) {
         if (self.inputCh && self.inputCh.readyState === 'open') self.inputCh.send(buf);
       },
@@ -38,6 +41,46 @@
     root.addEventListener('gamepaddisconnected', this._onPadDisc);
   }
 
+  /** Ratón del jugador sobre la imagen del juego (GunCon 2, ratón USB): estado completo por el canal de input */
+  Player.prototype._startMouse = function () {
+    if (this._mouseOn || !this.needs.mouse) return;
+    this._mouseOn = true;
+    var self = this, v = this.video, btns = 0, nx = 32768, ny = 32768, queued = false;
+    if (this.needs.gun && v.parentNode && v.parentNode.classList) v.parentNode.classList.add('aim');
+    function send() {
+      queued = false;
+      if (!self.inputCh || self.inputCh.readyState !== 'open') return;
+      self.inputCh.send(new Uint8Array([4, btns, nx & 255, nx >> 8, ny & 255, ny >> 8]).buffer);
+    }
+    function pos(e) {
+      // la imagen va con object-fit: contain: se descuentan las bandas negras
+      var r = v.getBoundingClientRect(), vw = v.videoWidth || 16, vh = v.videoHeight || 9;
+      var s = Math.min(r.width / vw, r.height / vh), w = vw * s, hh = vh * s;
+      var x = (e.clientX - r.left - (r.width - w) / 2) / w, y = (e.clientY - r.top - (r.height - hh) / 2) / hh;
+      nx = Math.round(Math.max(0, Math.min(1, x)) * 65535);
+      ny = Math.round(Math.max(0, Math.min(1, y)) * 65535);
+    }
+    function bits(b) { return (b & 1) | (b & 2) | (b & 4); }  // izquierdo, derecho, central (como PointerEvent.buttons)
+    this._mouseHandler = function (e) {
+      pos(e);
+      btns = bits(e.buttons);
+      if (e.type === 'pointerdown' && v.setPointerCapture) { try { v.setPointerCapture(e.pointerId); } catch (x) {} }
+      if (!queued) { queued = true; root.requestAnimationFrame(send); }
+    };
+    this._noMenu = function (e) { e.preventDefault(); };
+    ['pointermove', 'pointerdown', 'pointerup'].forEach(function (t) { v.addEventListener(t, self._mouseHandler); });
+    v.addEventListener('contextmenu', this._noMenu);
+  };
+
+  Player.prototype._stopMouse = function () {
+    if (!this._mouseOn) return;
+    var self = this, v = this.video;
+    ['pointermove', 'pointerdown', 'pointerup'].forEach(function (t) { v.removeEventListener(t, self._mouseHandler); });
+    v.removeEventListener('contextmenu', this._noMenu);
+    if (v.parentNode && v.parentNode.classList) v.parentNode.classList.remove('aim');
+    this._mouseOn = false;
+  };
+
   Player.prototype.platform = function () {
     return this.session && this.session.game ? this.session.game.platform : '';
   };
@@ -46,6 +89,58 @@
     if (this.closed || !gp || !this.o.onPadEvent) return;
     var d = CP.Pads ? CP.Pads.describe(gp) : { name: gp.id };
     this.o.onPadEvent({ kind: 'pad', player: gp.index + 1, connected: connected, name: d.name });
+  };
+
+  /** ¿La partida usa el micro o la cámara del jugador? (SingStar, micro de GameCube, EyeToy...) */
+  Player.prototype._wantsMedia = function () {
+    var o = (this.session && this.session.options) || {}, acc = o.accessories || [];
+    return {
+      mic: !!o.mic || acc.indexOf('singstar') >= 0 || acc.indexOf('headset') >= 0 || acc.indexOf('gc_mic') >= 0,
+      cam: !!o.camera || acc.indexOf('eyetoy') >= 0
+    };
+  };
+
+  Player.prototype._media = function () {
+    var self = this, w = this._wantsMedia(), md = root.navigator.mediaDevices;
+    if (this._mediaP) return this._mediaP;
+    if ((!w.mic && !w.cam) || !md || !md.getUserMedia) return Promise.resolve(null);
+    this._mediaP = md.getUserMedia({
+      // el eco del juego por los altavoces se cancela; la voz se deja tal cual (SingStar la puntúa)
+      audio: w.mic ? { echoCancellation: true, noiseSuppression: false, autoGainControl: true } : false,
+      video: w.cam ? { width: 640, height: 480, frameRate: 30 } : false
+    }).then(function (s) { self.localStream = s; return s; }, function () {
+      self.o.onToast(w.cam ? 'Sin permiso para la cámara o el micro: la consola no los tendrá' : 'Sin permiso para el micro: la consola no te oirá');
+      return null;
+    });
+    return this._mediaP;
+  };
+
+  /** La consola ofrece pistas de recepción (a=recvonly): se les engancha el micro y la cámara del jugador */
+  Player.prototype._attachUpstream = function (offerSdp) {
+    var want = {}, cur = null;
+    String(offerSdp).split(/\r?\n/).forEach(function (l) {
+      if (l.indexOf('m=') === 0) cur = { kind: l.slice(2).split(' ')[0], mid: null, recv: false };
+      else if (cur && l.indexOf('a=mid:') === 0) cur.mid = l.slice(6).trim();
+      else if (cur && l.trim() === 'a=recvonly') cur.recv = true;
+      if (cur && cur.mid && cur.recv) want[cur.mid] = cur.kind;
+    });
+    if (!Object.keys(want).length) return Promise.resolve();
+    var self = this;
+    return this._media().then(function (stream) {
+      self.pc.getTransceivers().forEach(function (t) {
+        var kind = want[t.mid];
+        if (!kind) return;
+        var track = stream ? stream.getTracks().filter(function (x) { return x.kind === kind; })[0] : null;
+        try { t.direction = 'sendonly'; } catch (e) {}
+        if (track) t.sender.replaceTrack(track).catch(function () {});
+      });
+    });
+  };
+
+  Player.prototype.setMicMuted = function (muted) {
+    if (!this.localStream) return false;
+    this.localStream.getAudioTracks().forEach(function (t) { t.enabled = !muted; });
+    return true;
   };
 
   /** Wiimotes / Balance Board reales del jugador: puente HID con la consola de la nube (js/wiilink.js) */
@@ -120,8 +215,9 @@
         this.pc.setRemoteDescription({ type: 'offer', sdp: m.sdp })
           .then(function () {
             self.pendingIce.splice(0).forEach(function (c) { self.pc.addIceCandidate(c).catch(function () {}); });
-            return self.pc.createAnswer();
+            return self._attachUpstream(m.sdp);
           })
+          .then(function () { return self.pc.createAnswer(); })
           .then(function (ans) { return self.pc.setLocalDescription(ans); })
           .then(function () { self._sendSignal({ type: 'answer', sdp: self.pc.localDescription.sdp }); })
           .catch(function (e) { self.o.onStatus('Error WebRTC: ' + e.message, 'error'); });
@@ -172,7 +268,7 @@
     };
     pc.onconnectionstatechange = function () {
       var s = pc.connectionState;
-      if (s === 'connected') { self.o.onStatus('', 'ok'); self.input.start(); self._stage('live'); }
+      if (s === 'connected') { self.o.onStatus('', 'ok'); self.input.start(); self._startMouse(); self._stage('live'); }
       else if (s === 'failed') { self.o.onStatus('No se pudo conectar (firewall/TURN)', 'error'); self._stage('error', { text: 'No se pudo conectar con el nodo. Revisa el firewall o el TURN.' }); }
       else if (s === 'disconnected') { self.o.onStatus('Conexión inestable…', 'loading'); self._stage('reconnecting'); }
     };
@@ -251,6 +347,8 @@
   Player.prototype.close = function () {
     this.closed = true;
     if (this.wii) { this.wii.stop(); this.wii = null; }
+    if (this.localStream) { this.localStream.getTracks().forEach(function (t) { t.stop(); }); this.localStream = null; }
+    this._stopMouse();
     root.removeEventListener('gamepadconnected', this._onPadConn);
     root.removeEventListener('gamepaddisconnected', this._onPadDisc);
     clearInterval(this._statsTimer);

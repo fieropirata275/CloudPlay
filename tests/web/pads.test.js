@@ -132,4 +132,17 @@ t('gatillo analógico en un eje que reposa en -1', () => {
   assert.strictEqual(P.read(gp).lt, 0.5);
 });
 
+t('receptor de Buzz!: un dispositivo, 4 jugadores', () => {
+  const gp = pad('Buzz (Vendor: 054c Product: 0002)', 20, 0);
+  const ps = P.players([gp]);
+  assert.strictEqual(ps.length, 4);
+  press(gp, 0);       // jugador 1: rojo
+  press(gp, 5 + 4);   // jugador 2: azul
+  press(gp, 15 + 3);  // jugador 4: naranja
+  assert.strictEqual(P.read(ps[0]).buttons, 1 << 0, 'rojo = ✕/A');
+  assert.strictEqual(P.read(ps[1]).buttons, 1 << 3, 'azul = △/Y');
+  assert.strictEqual(P.read(ps[2]).buttons, 0);
+  assert.strictEqual(P.read(ps[3]).buttons, 1 << 1, 'naranja = ◯/B');
+});
+
 console.log(ok + ' pruebas OK');

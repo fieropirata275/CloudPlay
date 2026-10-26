@@ -1,4 +1,8 @@
 load-module module-native-protocol-unix
 load-module module-null-sink sink_name=cloudplay sink_properties=device.description=CloudPlay rate=48000 channels=2
 set-default-sink cloudplay
-set-default-source cloudplay.monitor
+# Micro del jugador: el streamer escribe aquí lo que llega por WebRTC y los emuladores graban de "cloudplay_micsrc"
+# (SingStar, micro de GameCube, auriculares USB de PS2...)
+load-module module-null-sink sink_name=cloudplay_mic sink_properties=device.description=CloudPlay-Mic-In rate=48000 channels=1
+load-module module-remap-source source_name=cloudplay_micsrc master=cloudplay_mic.monitor source_properties=device.description=Microfono-CloudPlay
+set-default-source cloudplay_micsrc
