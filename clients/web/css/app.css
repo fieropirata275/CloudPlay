@@ -330,3 +330,32 @@ label input { margin-top: 0.3rem; color: var(--glass); font-size: 1rem; }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+/* ---------- Mandos: prueba en vivo y asistente ---------- */
+.pads-card { max-width: 34rem; }
+.pad-card { border: 1px solid var(--ink-3); border-radius: var(--r-md); padding: 0.9rem; margin-bottom: 0.7rem; }
+.pad-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.6rem; }
+.pad-head strong { color: var(--glass); font-size: 0.95rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.badge { flex: none; font-size: 0.72rem; padding: 0.15em 0.6em; border-radius: 99px; border: 1px solid var(--ink-3); color: var(--mist); }
+.badge.custom, .badge.standard { color: var(--wii); border-color: var(--wii); }
+.badge.profile { color: var(--led); border-color: var(--led); }
+.badge.unknown { color: var(--danger); border-color: var(--danger); }
+.pad-sub { color: var(--mist); font-size: 0.8rem; margin: 0.25rem 0 0.6rem; }
+.chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.chip { min-width: 2.1rem; text-align: center; font-size: 0.78rem; font-weight: 700; padding: 0.3em 0.45em; border-radius: var(--r-sm);
+  background: var(--ink); color: var(--mist); border: 1px solid var(--ink-3); transition: background 0.08s, color 0.08s; }
+.chip.on { background: var(--led); color: var(--ink); border-color: var(--led); }
+.sticks { display: flex; align-items: center; gap: 0.9rem; margin: 0.7rem 0; }
+.stick { position: relative; width: 3.2rem; height: 3.2rem; border-radius: 50%; border: 1px solid var(--ink-3); background: var(--ink); flex: none; }
+.stick i { position: absolute; left: 50%; top: 50%; width: 0.8rem; height: 0.8rem; margin: -0.4rem 0 0 -0.4rem; border-radius: 50%; background: var(--glass); }
+.trig { flex: 1; min-width: 3rem; }
+.trig small { display: block; color: var(--mist); font-size: 0.72rem; }
+.trig b { display: block; height: 0.45rem; border-radius: 99px; background: var(--ink); overflow: hidden; }
+.trig b i { display: block; height: 100%; width: 0; background: var(--led); }
+.pad-actions { display: grid; grid-template-columns: 1fr 1fr; grid-gap: 0.5rem; }
+.pad-actions .btn:only-child { grid-column: span 2; }
+.wiz-bar { height: 0.35rem; border-radius: 99px; background: var(--ink); overflow: hidden; }
+.wiz-bar i { display: block; height: 100%; width: 0; background: var(--led); transition: width 0.25s; }
+.wiz-ask { color: var(--mist); text-align: center; margin-top: 1.2rem; }
+.wiz-prompt { color: var(--glass); font-family: var(--display); font-size: 1.7rem; text-align: center; margin: 0.2rem 0 0.4rem; min-height: 2.2em; }
+@media (max-width: 480px) { .wiz-prompt { font-size: 1.3rem; } .pad-actions { grid-template-columns: 1fr; } .pad-actions .btn:only-child { grid-column: auto; } }

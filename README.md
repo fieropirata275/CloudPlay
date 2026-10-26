@@ -140,7 +140,24 @@ las Quadro/RTX Ax000 no. Dolphin depende mucho del rendimiento por núcleo.
   Mandos físicos (hasta 4 jugadores), mando de la tele y controles táctiles si no hay mando.
 
 En partida: **Select+Start 1 s** (o Atrás/Esc) abre el menú: guardar/cargar estado, calidad,
-estadísticas, salir sin cerrar (y seguir en otro dispositivo) o cerrar el juego.
+estadísticas, configurar mando, salir sin cerrar (y seguir en otro dispositivo) o cerrar el juego.
+
+### Mandos originales (PS2, GameCube) y cualquier mando USB
+
+Los mandos de PS2 y GameCube se conectan al ordenador, tele o Android con su adaptador USB (Mayflash, Super Dual Box,
+adaptadores genéricos de PS2…). CloudPlay los traduce al mando que esperan los emuladores:
+
+1. **Perfil automático**: ~860 mandos y adaptadores reconocidos por su USB, sacados de
+   [SDL_GameControllerDB](https://github.com/mdqinc/SDL_GameControllerDB) (`tools/gen-padsdb.py` → `clients/web/js/padsdb.js`,
+   se carga solo cuando se conecta un mando que el navegador no reconoce).
+2. **Asistente «Configurar mando»** (web, teles y Android): eliges qué mando es (PS2, GameCube u otro) y pulsas cada
+   botón cuando te lo pide, con su nombre de verdad (✕ ◯ □ △, A B X Y Z…). Queda guardado en ese dispositivo para ese
+   modelo de mando. En la web está en **Mandos** (biblioteca) con **prueba en vivo** de botones, sticks y gatillos.
+3. Si se conecta un mando desconocido, la app ofrece configurarlo.
+
+Límites: los botones sensibles a la presión del DualShock 2 llegan como normales (casi ningún adaptador los manda). El
+adaptador oficial de Nintendo para GameCube no aparece como mando en Windows (necesitaría su driver aparte), y el Wiimote
+original todavía no se puede usar (de momento la Wii se juega con un mando normal).
 
 ## 4. Desarrollo y pruebas
 
@@ -153,7 +170,8 @@ python devserver.py                      # http://localhost:8000 · admin@local 
 cd control-plane && pytest -q            # flujo completo de API, agente, señalización, device code, TURN
 cd worker/session && Xvfb :99 & DISPLAY=:99 python3 tests/loopback_test.py   # streamer WebRTC real
 cd tests/e2e && ./run.sh                 # navegador real jugando contra session.py
-cd clients/android && ./gradlew testDebugUnitTest
+cd clients/android && ./gradlew testDebugUnitTest   # protocolo + asistente de mandos
+node tests/web/pads.test.js              # mapeo de mandos web (perfiles SDL, hat, asistente)
 ```
 
 Qué está verificado y qué no: ver [la sección de verificación](#verificación).

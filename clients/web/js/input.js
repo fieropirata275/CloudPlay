@@ -140,19 +140,14 @@
     return out.slice(0, MAX_PADS);
   };
 
+  // Cualquier mando (estándar, con perfil o configurado con el asistente) pasa por CP.Pads (js/pads.js)
   InputManager.prototype._stateFrom = function (gp) {
-    var st = emptyState(), b = gp.buttons, a = gp.axes;
-    for (var i = 0; i < 16 && i < b.length; i++) {
-      if (i === 6 || i === 7) continue;
-      if (b[i] && (b[i].pressed || b[i].value > 0.5)) st.buttons |= (1 << i);
-    }
-    st.lt = b[6] ? b[6].value : 0;
-    st.rt = b[7] ? b[7].value : 0;
-    if (st.lt > 0.5) st.buttons |= (1 << BTN.LT);
-    if (st.rt > 0.5) st.buttons |= (1 << BTN.RT);
-    var l = stick(a[0] || 0, a[1] || 0), r = stick(a[2] || 0, a[3] || 0);
+    var n = CP.Pads.read(gp), st = emptyState();
+    st.buttons = n.buttons;
+    st.lt = n.lt; st.rt = n.rt;
+    var l = stick(n.lx, n.ly), r = stick(n.rx, n.ry);
     st.lx = l[0]; st.ly = l[1]; st.rx = r[0]; st.ry = r[1];
-    st._guide = !!(b[16] && b[16].pressed);
+    st._guide = n.guide;
     return st;
   };
 

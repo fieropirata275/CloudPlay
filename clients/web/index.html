@@ -88,6 +88,7 @@
         <button class="filter" data-platform="wii">Wii</button>
       </nav>
       <input id="search" class="search" type="search" placeholder="Buscar juego" aria-label="Buscar juego">
+      <button id="pads-link" class="btn quiet">Mandos</button>
       <a id="admin-link" class="btn quiet" href="#/admin" hidden>Panel</a>
       <button id="logout" class="btn quiet">Salir</button>
       <span class="topbar-progress" aria-hidden="true"></span>
@@ -178,6 +179,7 @@
           <button class="btn" data-action="quality" data-kbps="8000">8 Mb</button>
           <button class="btn" data-action="quality" data-kbps="15000">15 Mb</button>
         </div>
+        <button class="btn" data-action="pads">Configurar mando</button>
         <button class="btn" data-action="stats">Ver datos de conexión</button>
         <button class="btn" data-action="detach">Salir y seguir en otra pantalla</button>
         <button class="btn danger" data-action="quit">Cerrar el juego</button>
@@ -193,6 +195,39 @@
       <div id="modal-actions" class="stack"></div>
     </div>
   </div>
+  <!-- Mandos: prueba en vivo y asistente. Va después de #modal: si los dos están abiertos, manda el modal -->
+  <div id="pads-sheet" class="sheet modal" hidden>
+    <div class="sheet-card pads-card" role="dialog" aria-labelledby="pads-title">
+      <h2 id="pads-title">Mandos</h2>
+      <div id="pads-main">
+        <p class="muted" id="pads-empty">Conecta un mando y pulsa cualquier botón. Valen los originales de PS2 y GameCube con su adaptador USB.</p>
+        <div id="pads-list"></div>
+        <button class="btn primary" id="pads-close" data-autofocus>Listo</button>
+        <p class="hint">Mientras esta hoja está abierta el mando solo se prueba: ciérrala con el ratón, el teclado, el mando de la tele o manteniendo START.</p>
+      </div>
+      <div id="pads-pick" hidden>
+        <p class="muted">¿Qué mando vas a configurar?</p>
+        <div class="stack">
+          <button class="btn" data-layout="ps2">Mando de PS2 (DualShock 2)</button>
+          <button class="btn" data-layout="gc">Mando de GameCube</button>
+          <button class="btn" data-layout="std">Otro mando</button>
+          <button class="btn quiet" id="pick-cancel">Cancelar</button>
+        </div>
+      </div>
+      <div id="pads-wizard" hidden>
+        <p class="sheet-label"><span id="wiz-pad"></span> · <span id="wiz-progress"></span></p>
+        <div class="wiz-bar" aria-hidden="true"><i id="wiz-bar"></i></div>
+        <p class="wiz-ask">Pulsa</p>
+        <p class="wiz-prompt" id="wiz-prompt" aria-live="polite"></p>
+        <p class="hint" id="wiz-hint"></p>
+        <div class="grid2">
+          <button class="btn" id="wiz-back">Anterior</button>
+          <button class="btn" id="wiz-skip">Saltar</button>
+        </div>
+        <button class="btn quiet" id="wiz-cancel">Cancelar</button>
+      </div>
+    </div>
+  </div>
   <div id="toast" class="toast" role="status" hidden></div>
 
   <script src="vendor/motion.min.js"></script>
@@ -203,10 +238,12 @@
   <script src="js/config.js"></script>
   <script src="js/api.js"></script>
   <script src="js/fx.js"></script>
+  <script src="js/pads.js"></script>
   <script src="js/input.js"></script>
   <script src="js/nav.js"></script>
   <script src="js/player.js"></script>
   <script src="js/admin.js"></script>
+  <script src="js/padsui.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

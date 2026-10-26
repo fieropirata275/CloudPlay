@@ -13,7 +13,9 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
@@ -94,6 +96,19 @@ class StreamActivity : AppCompatActivity() {
     private var comboSince = 0L
     private var menuOpen = false
 
+    // ------------------------------------------- mandos con mapeo propio (PadMapper.kt)
+    private val mappedBySlot = arrayOfNulls<MappedPad>(MAX_PADS)
+    private val mappedByDevice = HashMap<Int, MappedPad?>()
+    private var lastPadDevice: InputDevice? = null
+    private var wizard: PadWizard? = null
+    private var wizardDevice = -1
+    private lateinit var wizView: LinearLayout
+    private lateinit var wizTitle: TextView
+    private lateinit var wizPrompt: TextView
+    private lateinit var wizHint: TextView
+    private lateinit var wizBack: Button
+    private val wizAuto = Runnable { wizard?.skip() }
+
     // ---------------------------------------------------------------- ABR
     private var bitrate = 8000
     private var manualBitrate = 0
@@ -155,6 +170,7 @@ class StreamActivity : AppCompatActivity() {
             }
             root.addView(menuBtn, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.CENTER_HORIZONTAL))
         }
+        buildWizardUi(root)
         setContentView(root)
         setStatus("Arrancando la consola en la nube…")
     }
@@ -371,8 +387,14 @@ class StreamActivity : AppCompatActivity() {
         val isPad = (dev.sources and InputDevice.SOURCE_GAMEPAD == InputDevice.SOURCE_GAMEPAD) ||
             (dev.sources and InputDevice.SOURCE_JOYSTICK == InputDevice.SOURCE_JOYSTICK)
         if (!isPad) return 0
-        return deviceSlot.getOrPut(dev.id) { (0 until MAX_PADS).firstOrNull { it !in deviceSlot.values } ?: 0 }
+        lastPadDevice = dev
+        val slot = deviceSlot.getOrPut(dev.id) { (0 until MAX_PADS).firstOrNull { it !in deviceSlot.values } ?: 0 }
+        mappedBySlot[slot] = mappedFor(dev)
+        return slot
     }
+
+    private fun mappedFor(dev: InputDevice): MappedPad? =
+        mappedByDevice.getOrPut(dev.id) { PadStore.load(this, dev)?.let { MappedPad(it) } }
 
     private fun keyToBit(code: Int): Int? = when (code) {
         KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_DPAD_CENTER -> Btn.A
@@ -395,8 +417,21 @@ class StreamActivity : AppCompatActivity() {
     }
 
     override fun dispatchKeyEvent(e: KeyEvent): Boolean {
+        wizard?.let { w ->
+            // el mando que se configura habla con el asistente; el resto (mando de la tele, táctil) maneja sus botones
+            if (e.device?.id == wizardDevice) {
+                if (e.repeatCount == 0) w.onKey(e.keyCode, e.action == KeyEvent.ACTION_DOWN)
+                return true
+            }
+            if (e.keyCode == KeyEvent.KEYCODE_BACK) { if (e.action == KeyEvent.ACTION_UP) endWizard(null); return true }
+            return super.dispatchKeyEvent(e)
+        }
         if (menuOpen) return super.dispatchKeyEvent(e)
         val code = e.keyCode
+        if (PadStore.isGamepad(e.device)) {
+            val mp = mappedBySlot[slotFor(e)]
+            if (mp != null && mp.onKey(code, e.action == KeyEvent.ACTION_DOWN)) { flush(false); return true }
+        }
         if (code == KeyEvent.KEYCODE_BACK || code == KeyEvent.KEYCODE_BUTTON_MODE || code == KeyEvent.KEYCODE_ESCAPE || code == KeyEvent.KEYCODE_MENU) {
             if (e.action == KeyEvent.ACTION_UP) openMenu()
             return true
@@ -411,6 +446,14 @@ class StreamActivity : AppCompatActivity() {
     }
 
     override fun dispatchGenericMotionEvent(e: MotionEvent): Boolean {
+        wizard?.let { w ->
+            if (e.device?.id == wizardDevice && e.action == MotionEvent.ACTION_MOVE) { w.onMotion(PadStore.axisValues(e)); return true }
+            return super.dispatchGenericMotionEvent(e)
+        }
+        if (!menuOpen && e.action == MotionEvent.ACTION_MOVE && PadStore.isGamepad(e.device)) {
+            val mp = mappedBySlot[slotFor(e)]
+            if (mp != null) { mp.onMotion(PadStore.axisValues(e)); flush(false); return true }
+        }
         if (menuOpen || e.source and InputDevice.SOURCE_JOYSTICK != InputDevice.SOURCE_JOYSTICK || e.action != MotionEvent.ACTION_MOVE) {
             return super.dispatchGenericMotionEvent(e)
         }
@@ -435,7 +478,7 @@ class StreamActivity : AppCompatActivity() {
 
     private fun stateFor(slot: Int): PadState {
         val a = axes[slot]
-        val s = PadState(keyButtons[slot] or hatButtons[slot], a.lx, a.ly, a.rx, a.ry, a.lt, a.rt)
+        val s = mappedBySlot[slot]?.state() ?: PadState(keyButtons[slot] or hatButtons[slot], a.lx, a.ly, a.rx, a.ry, a.lt, a.rt)
         if (s.lt > 0.5f) s.buttons = s.buttons or (1 shl Btn.LT)
         if (s.rt > 0.5f) s.buttons = s.buttons or (1 shl Btn.RT)
         if (slot == 0 && touch != null) {
@@ -477,41 +520,133 @@ class StreamActivity : AppCompatActivity() {
     private fun releaseAll() {
         keyButtons.fill(0); hatButtons.fill(0); axes.forEach { it.lx = 0f; it.ly = 0f; it.rx = 0f; it.ry = 0f; it.lt = 0f; it.rt = 0f }
         touchButtons = 0; touchLx = 0f; touchLy = 0f
+        mappedBySlot.forEach { it?.release() }
         flush(true)
     }
 
     // ------------------------------------------------------------------- menú
     private fun openMenu() {
-        if (menuOpen || isFinishing) return
+        if (menuOpen || isFinishing || wizard != null) return
         releaseAll()
         menuOpen = true
-        val items = arrayOf(
-            "Continuar", "Guardar estado", "Cargar estado", "Siguiente ranura",
-            "Calidad: automática", "Calidad: 4 Mbps", "Calidad: 8 Mbps", "Calidad: 15 Mbps",
-            if (showStats) "Ocultar estadísticas" else "Mostrar estadísticas",
-            if (touch?.visibility == View.VISIBLE) "Ocultar controles táctiles" else "Mostrar controles táctiles",
-            "Salir sin cerrar (seguir en otro dispositivo)", "Cerrar el juego",
+        val items = listOf<Pair<String, () -> Unit>>(
+            "Continuar" to {},
+            "Guardar estado" to { control(JSONObject().put("t", "savestate")) },
+            "Cargar estado" to { control(JSONObject().put("t", "loadstate")) },
+            "Siguiente ranura" to { control(JSONObject().put("t", "nextslot")) },
+            "Configurar mando" to { main.post { configurePad() } },
+            "Calidad: automática" to { manualBitrate = 0 },
+            "Calidad: 4 Mbps" to { setManualBitrate(4000) },
+            "Calidad: 8 Mbps" to { setManualBitrate(8000) },
+            "Calidad: 15 Mbps" to { setManualBitrate(15000) },
+            (if (showStats) "Ocultar estadísticas" else "Mostrar estadísticas") to {
+                showStats = !showStats; stats.visibility = if (showStats) View.VISIBLE else View.GONE
+            },
+            (if (touch?.visibility == View.VISIBLE) "Ocultar controles táctiles" else "Mostrar controles táctiles") to {
+                touch?.let { it.visibility = if (it.visibility == View.VISIBLE) View.GONE else View.VISIBLE }
+                Unit
+            },
+            "Salir sin cerrar (seguir en otro dispositivo)" to { finish() },
+            "Cerrar el juego" to {
+                control(JSONObject().put("t", "quit"))
+                lifecycleScope.launch { runCatching { api.delete("/api/sessions/$sessionId") }; finish() }
+                Unit
+            },
         )
         AlertDialog.Builder(this)
             .setTitle("Menú")
-            .setItems(items) { _, which ->
-                when (which) {
-                    1 -> control(JSONObject().put("t", "savestate"))
-                    2 -> control(JSONObject().put("t", "loadstate"))
-                    3 -> control(JSONObject().put("t", "nextslot"))
-                    4 -> manualBitrate = 0
-                    5, 6, 7 -> { manualBitrate = intArrayOf(4000, 8000, 15000)[which - 5]; control(JSONObject().put("t", "bitrate").put("kbps", manualBitrate)) }
-                    8 -> { showStats = !showStats; stats.visibility = if (showStats) View.VISIBLE else View.GONE }
-                    9 -> touch?.let { it.visibility = if (it.visibility == View.VISIBLE) View.GONE else View.VISIBLE }
-                    10 -> finish()
-                    11 -> {
-                        control(JSONObject().put("t", "quit"))
-                        lifecycleScope.launch { runCatching { api.delete("/api/sessions/$sessionId") }; finish() }
-                    }
-                }
+            .setItems(items.map { it.first }.toTypedArray()) { _, which -> items[which].second() }
+            .setOnDismissListener { menuOpen = false; immersive() }
+            .show()
+    }
+
+    private fun setManualBitrate(kbps: Int) {
+        manualBitrate = kbps
+        control(JSONObject().put("t", "bitrate").put("kbps", kbps))
+    }
+
+    // ------------------------------------------------------- asistente de mandos
+    private fun buildWizardUi(root: FrameLayout) {
+        wizView = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+            setBackgroundColor(Color.argb(235, 16, 18, 58)); setPadding(48, 48, 48, 48)
+            visibility = View.GONE; isClickable = true
+        }
+        wizTitle = TextView(this).apply { setTextColor(Color.parseColor("#9AA1D6")); textSize = 14f; gravity = Gravity.CENTER }
+        val ask = TextView(this).apply { text = "Pulsa"; setTextColor(Color.parseColor("#9AA1D6")); textSize = 16f; gravity = Gravity.CENTER; setPadding(0, 40, 0, 0) }
+        wizPrompt = TextView(this).apply {
+            setTextColor(Color.parseColor("#E8F1FF")); textSize = 30f; gravity = Gravity.CENTER
+            typeface = android.graphics.Typeface.DEFAULT_BOLD; setPadding(0, 8, 0, 12)
+        }
+        wizHint = TextView(this).apply { setTextColor(Color.parseColor("#9AA1D6")); textSize = 13f; gravity = Gravity.CENTER }
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; setPadding(0, 36, 0, 0) }
+        wizBack = Button(this).apply { text = "Anterior"; setOnClickListener { wizard?.back() } }
+        val skip = Button(this).apply { text = "Saltar"; setOnClickListener { wizard?.skip() } }
+        val cancel = Button(this).apply { text = "Cancelar"; setOnClickListener { endWizard(null) } }
+        row.addView(wizBack); row.addView(skip); row.addView(cancel)
+        listOf(wizTitle, ask, wizPrompt, wizHint, row).forEach { wizView.addView(it) }
+        root.addView(wizView, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+    }
+
+    /** Elige el mando (el último que se ha usado) y la consola de la que es, y arranca el asistente */
+    private fun configurePad() {
+        val dev = lastPadDevice?.let { InputDevice.getDevice(it.id) }
+            ?: InputDevice.getDeviceIds().map { InputDevice.getDevice(it) }.firstOrNull { PadStore.isGamepad(it) && it?.isVirtual == false }
+        if (dev == null) { toast("Conecta un mando y pulsa cualquier botón"); return }
+        val hasCustom = PadStore.load(this, dev) != null
+        val labels = mutableListOf("Mando de PS2 (DualShock 2)", "Mando de GameCube", "Otro mando")
+        if (hasCustom) labels.add("Quitar mi configuración")
+        menuOpen = true
+        AlertDialog.Builder(this)
+            .setTitle("¿Qué mando es «${dev.name}»?")
+            .setItems(labels.toTypedArray()) { _, which ->
+                if (which == 3) {
+                    PadStore.reset(this, dev)
+                    forgetMapping(dev)
+                    toast("Configuración quitada")
+                } else main.post { startWizard(dev, listOf("ps2", "gc", "std")[which]) }
             }
             .setOnDismissListener { menuOpen = false; immersive() }
             .show()
+    }
+
+    private fun forgetMapping(dev: InputDevice) {
+        mappedByDevice.remove(dev.id)
+        deviceSlot[dev.id]?.let { mappedBySlot[it] = mappedFor(dev) }
+    }
+
+    private fun startWizard(dev: InputDevice, layout: String) {
+        releaseAll()
+        wizardDevice = dev.id
+        wizView.visibility = View.VISIBLE
+        wizard = PadWizard(layout,
+            onStep = { step, i, total ->
+                wizTitle.text = "${dev.name} · paso ${i + 1} de $total"
+                wizPrompt.text = step.label
+                val stick = step.slot.length == 2 && step.slot[1] in "xy"
+                val trig = step.slot == "lt" || step.slot == "rt"
+                wizHint.text = (if (stick) "Empújalo hasta el tope y suéltalo. " else if (trig) "Hasta el fondo y suelta. " else "Pulsa y suelta. ") +
+                    (if (step.optional) "Si tu mando no lo tiene, se salta solo en unos segundos." else "")
+                wizBack.isEnabled = i > 0
+                main.removeCallbacks(wizAuto)
+                if (step.optional) main.postDelayed(wizAuto, 9000)
+            },
+            onDone = { map -> endWizard(map) })
+        wizard?.start()
+    }
+
+    private fun endWizard(map: String?) {
+        main.removeCallbacks(wizAuto)
+        wizard = null
+        wizView.visibility = View.GONE
+        val dev = InputDevice.getDevice(wizardDevice)
+        if (map != null && dev != null) {
+            PadStore.save(this, dev, map)
+            forgetMapping(dev)
+            toast("Mando configurado")
+        }
+        wizardDevice = -1
+        immersive()
     }
 
     // ------------------------------------------------------------ stats / ABR

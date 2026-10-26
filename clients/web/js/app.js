@@ -90,6 +90,15 @@
     setTimeout(CP.navFocusFirst, 40);
   }
 
+  // Mandos: prueba en vivo y asistente (js/padsui.js)
+  CP.PadsUI.init({
+    openSheet: openSheet, closeSheet: closeSheet, toast: toast, modal: modal,
+    inGame: function () { return !!state.player; }
+  });
+  $('#pads-link').addEventListener('click', function () {
+    CP.PadsUI.open({ onClose: function () { setTimeout(CP.navFocusFirst, 60); } });
+  });
+
   function loadMe() {
     if (state.me || !CP.token()) return Promise.resolve(state.me);
     return CP.api('GET', '/api/auth/me').then(function (me) { state.me = me; return me; }).catch(function () { return null; });
@@ -564,6 +573,17 @@
     var p = state.player;
     if (!a || !p) return;
     if (a === 'resume') return closeMenu();
+    if (a === 'pads') {
+      // se cierra el menú sin devolver el mando al juego: lo devuelve la hoja de mandos al cerrarse
+      closeSheet($('#game-menu'));
+      return CP.PadsUI.open({
+        onClose: function () {
+          CP.navSetActive(false);
+          if (state.player) state.player.pauseInput(false);
+          if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+        }
+      });
+    }
     if (a === 'stats') {
       var st = $('#stats');
       st.hidden = !st.hidden;

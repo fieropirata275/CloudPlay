@@ -2,7 +2,7 @@
 (function (root) {
   'use strict';
   var CP = root.CP = root.CP || {};
-  var active = true, backHandler = null, lastPad = 0, padRepeatAt = 0;
+  var active = true, padPaused = false, backHandler = null, lastPad = 0, padRepeatAt = 0;
 
   function focusables() {
     var scope = document.querySelector('.modal:not([hidden])') || document.querySelector('.screen.active');
@@ -49,6 +49,8 @@
   }
 
   CP.navSetActive = function (v) { active = v; };
+  // Con la hoja de mandos abierta el mando se está probando: no debe mover el foco ni pulsar botones
+  CP.navPadPause = function (v) { padPaused = v; lastPad = 0; };
   CP.navOnBack = function (fn) { backHandler = fn; };
 
   var DIRS = { 37: 'left', 38: 'up', 39: 'right', 40: 'down' };
@@ -71,15 +73,16 @@
 
   // Mando en los menús: D-pad/stick mueven, A pulsa, B atrás
   function poll() {
-    if (active && navigator.getGamepads) {
+    if (active && !padPaused && navigator.getGamepads) {
       var gp = Array.prototype.filter.call(navigator.getGamepads() || [], Boolean)[0];
       if (gp) {
-        var b = gp.buttons, a = gp.axes, bits = 0;
-        var pressed = function (i) { return b[i] && b[i].pressed; };
-        if (pressed(12) || a[1] < -0.6) bits |= 1;
-        if (pressed(13) || a[1] > 0.6) bits |= 2;
-        if (pressed(14) || a[0] < -0.6) bits |= 4;
-        if (pressed(15) || a[0] > 0.6) bits |= 8;
+        // mismo mapeo que en partida: los mandos originales también mueven los menús
+        var n = CP.Pads.read(gp), bits = 0;
+        var pressed = function (i) { return (n.buttons >> i) & 1; };
+        if (pressed(12) || n.ly < -0.6) bits |= 1;
+        if (pressed(13) || n.ly > 0.6) bits |= 2;
+        if (pressed(14) || n.lx < -0.6) bits |= 4;
+        if (pressed(15) || n.lx > 0.6) bits |= 8;
         if (pressed(0)) bits |= 16;
         if (pressed(1)) bits |= 32;
         if (pressed(3)) bits |= 64;

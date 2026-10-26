@@ -26,6 +26,8 @@ jobs:
       - uses: azure/setup-helm@v4
       - name: Chart de Helm
         run: helm lint deploy/helm/cloudplay --set cloudflared.token=x
+      - name: Mandos (perfiles, hat y asistente con mandos simulados)
+        run: node tests/web/pads.test.js
       - name: El cliente web sigue siendo ES5 (teles antiguas)
         run: |
           npm i -s --no-save acorn@8
