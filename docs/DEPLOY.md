@@ -141,6 +141,35 @@ helm install cloudplay deploy/helm/cloudplay -n cloudplay --create-namespace \
 
 ---
 
+## Juegos, BIOS y consolas sin juego
+
+En cada nodo gaming (o en una carpeta compartida por NFS/SMB montada en todos):
+
+```text
+/srv/cloudplay/library/ps2/  *.iso *.chd *.cso …      → aparecen solos en el catálogo
+/srv/cloudplay/library/gc/   *.iso *.rvz *.gcz …
+/srv/cloudplay/library/wii/  *.wbfs *.rvz *.iso …
+/srv/cloudplay/bios/ps2/     scph*.bin                 BIOS de PS2 (obligatoria para jugar a PS2)
+/srv/cloudplay/bios/gc/EUR|USA|JAP/IPL.bin             IPL de GameCube (opcional)
+/srv/cloudplay/bios/wii/                               carpeta "Wii" de Dolphin con el System Menu (opcional)
+```
+
+Con el firmware puesto, el catálogo muestra también **la consola sin juego**, como al encenderla sin disco:
+
+| Entrada del catálogo | Qué arranca | Necesita |
+|---|---|---|
+| PlayStation 2 · Navegador del sistema | El OSDSYS: tarjetas de memoria, reloj, idioma, reproductor de CD | La BIOS de PS2 |
+| GameCube · Menú principal | La IPL con su animación de arranque, tarjetas de memoria, calendario, ajustes | `IPL.bin` de la región (EUR = PAL) |
+| Wii · Menú del sistema | El Wii Menu: canales instalados, Mii, ajustes de la consola | La NAND con el System Menu |
+
+- **NAND de Wii:** vuelca la NAND de tu Wii con BootMii, impórtala en Dolphin en un PC (*Herramientas → Gestionar
+  NAND → Importar copia de BootMii*) y copia la carpeta `Wii` de Dolphin a `/srv/cloudplay/bios/wii/`. El contenido de
+  los títulos se comparte en solo lectura y los ajustes y Mii se copian a cada usuario, que los conserva entre partidas.
+- **IPL de GameCube:** se vuelca de la consola con homebrew (por ejemplo, *ipl-dumper*). La región de la carpeta
+  tiene que coincidir con la de la IPL (`EUR` = PAL, `USA` = NTSC-U, `JAP` = NTSC-J).
+- **Legal:** CloudPlay no incluye ni descarga juegos ni firmware. Cada empresa usa los volcados de sus propias consolas
+  y juegos.
+
 ## Sin cortes, con apagones y con cortes de red
 
 | Situación | Qué pasa |

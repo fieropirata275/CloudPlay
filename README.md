@@ -89,7 +89,9 @@ Actualizar sin cortes a la última versión publicada: `sudo cloudplay update`.
 Instalación manual (sin el instalador): `cp .env.example .env && docker compose up -d --build` en el orquestador,
 y en cada nodo `cd worker && docker build -t cloudplay/session:local ./session && cp worker.env.example worker.env
 && docker compose up -d --build` con `JOIN_TOKEN` y `CP_URL` rellenos. Los juegos van en
-`/srv/cloudplay/library/{ps2,gc,wii}` (se dan de alta solos) y la BIOS de PS2 en `/srv/cloudplay/bios/ps2`.
+`/srv/cloudplay/library/{ps2,gc,wii}` (se dan de alta solos) y el firmware en `/srv/cloudplay/bios/` (BIOS de PS2,
+IPL de GameCube y NAND de Wii). Con el firmware, el catálogo también ofrece **la consola sin juego** (navegador de la PS2,
+menú principal de GameCube, Wii Menu): ver [docs/DEPLOY.md](docs/DEPLOY.md#juegos-bios-y-consolas-sin-juego).
 
 ### Web comercial
 

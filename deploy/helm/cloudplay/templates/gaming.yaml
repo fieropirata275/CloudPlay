@@ -41,10 +41,12 @@ spec:
             - { name: docker, mountPath: /var/run/docker.sock }
             - { name: data, mountPath: {{ .Values.gaming.dataPath }} }
             - { name: library, mountPath: /library, readOnly: true }
+            - { name: bios, mountPath: /bios, readOnly: true }
           resources:
             requests: { cpu: 50m, memory: 128Mi }
       volumes:
         - { name: docker, hostPath: { path: /var/run/docker.sock, type: Socket } }
         - { name: data, hostPath: { path: {{ .Values.gaming.dataPath }}, type: DirectoryOrCreate } }
         - { name: library, hostPath: { path: {{ .Values.gaming.libraryPath }}, type: DirectoryOrCreate } }
+        - { name: bios, hostPath: { path: {{ .Values.gaming.biosPath }}, type: DirectoryOrCreate } }
 {{- end }}

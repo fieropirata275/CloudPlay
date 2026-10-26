@@ -17,3 +17,5 @@ services:
       - ${DATA_DIR:-/var/lib/cloudplay}:${DATA_DIR:-/var/lib/cloudplay}
       # Solo lectura para escanear el catálogo
       - ${LIBRARY_DIR:-/srv/cloudplay/library}:/library:ro
+      # Firmware (BIOS PS2, IPL GameCube, NAND Wii): con él aparece en el catálogo la consola sin juego
+      - ${BIOS_DIR:-/srv/cloudplay/bios}:/bios:ro

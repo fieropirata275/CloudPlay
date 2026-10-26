@@ -38,7 +38,7 @@ RUN userdel -r ubuntu 2>/dev/null || true \
 
 COPY cloudplay /opt/cloudplay
 COPY templates /opt/cloudplay/templates
-COPY entrypoint.sh setup-emu.sh pulse.pa /opt/cloudplay/
+COPY entrypoint.sh setup-emu.sh gc-menu.sh pulse.pa /opt/cloudplay/
 RUN chmod +x /opt/cloudplay/*.sh
 
 # Comprobación rápida de que los plugins críticos están

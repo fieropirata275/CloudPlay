@@ -89,10 +89,36 @@ def blocking(fn, *a, **kw):
 
 
 # ------------------------------------------------------------------ catálogo
+SYSTEM_PATH = "@system"  # ruta virtual: arrancar la consola sin juego (menú del sistema)
+SYSTEM_TITLE = {
+    "ps2": "PlayStation 2 · Navegador del sistema",
+    "gc": "GameCube · Menú principal",
+    "wii": "Wii · Menú del sistema",
+}
+
+
+def system_firmware(plat: str, bios: Path = Path("/bios")) -> bool:
+    """¿Hay firmware para arrancar la consola sin juego? Tiene que volcarlo cada empresa de sus consolas."""
+    try:
+        if plat == "ps2":
+            return any(f.suffix.lower() == ".bin" for f in (bios / "ps2").iterdir() if f.is_file())
+        if plat == "gc":
+            return any((bios / "gc" / r / "IPL.bin").is_file() for r in ("EUR", "USA", "JAP"))
+        if plat == "wii":
+            return (bios / "wii" / "title" / "00000001" / "00000002" / "content").is_dir()
+    except OSError:
+        pass
+    return False
+
+
 def scan_library() -> list[dict]:
     """La librería debe tener carpetas por plataforma: library/ps2, library/gc, library/wii."""
     root = Path("/library")
-    out = []
+    out = [
+        {"platform": p, "path": f"{p}/{SYSTEM_PATH}", "title": SYSTEM_TITLE[p]}
+        for p in PLATFORMS
+        if p in SYSTEM_TITLE and system_firmware(p)
+    ]
     for plat in PLATFORMS:
         d = root / plat
         if not d.is_dir():
