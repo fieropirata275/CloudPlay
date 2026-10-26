@@ -16,7 +16,7 @@ jobs:
       - name: Tests de la API
         run: |
           pip install -q -r control-plane/requirements.txt aiosqlite fakeredis pytest httpx
-          cd control-plane && pytest -q tests
+          cd control-plane && python -m pytest -q tests
       - name: Shellcheck de los scripts de despliegue
         run: |
           sudo apt-get install -y -qq shellcheck
