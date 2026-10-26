@@ -109,6 +109,31 @@ class StreamActivity : AppCompatActivity() {
     private lateinit var wizBack: Button
     private val wizAuto = Runnable { wizard?.skip() }
 
+    // Animación de mando conectado / desconectado al estilo de la consola (PadFxView.kt)
+    private lateinit var padFx: PadFxView
+    private var platform = "ps2"
+    private val inputListener = object : android.hardware.input.InputManager.InputDeviceListener {
+        private val known = HashMap<Int, Int>()
+        override fun onInputDeviceAdded(id: Int) {
+            val dev = InputDevice.getDevice(id) ?: return
+            if (!PadStore.isGamepad(dev) || dev.isVirtual) return
+            val n = (known.values.maxOrNull() ?: 0) + 1
+            known[id] = n
+            padFx.show(platform, n, true)
+        }
+        override fun onInputDeviceRemoved(id: Int) {
+            val n = known.remove(id) ?: return
+            padFx.show(platform, n, false)
+        }
+        override fun onInputDeviceChanged(id: Int) {}
+        fun seed() {
+            InputDevice.getDeviceIds().forEach { id ->
+                val d = InputDevice.getDevice(id)
+                if (PadStore.isGamepad(d) && d?.isVirtual == false) known[id] = known.size + 1
+            }
+        }
+    }
+
     // ---------------------------------------------------------------- ABR
     private var bitrate = 8000
     private var manualBitrate = 0
@@ -129,6 +154,7 @@ class StreamActivity : AppCompatActivity() {
                 val s = api.obj("GET", "/api/sessions/$sessionId")
                 if (!s.has("signal_url")) return@launch end(s.optString("error").ifEmpty { "La sesión ya ha terminado" })
                 signalUrl = s.getString("signal_url")
+                platform = s.optJSONObject("game")?.optString("platform")?.ifEmpty { null } ?: platform
                 if (s.optString("status") == "queued") showQueue(s.optInt("queue_position", 1))
                 iceServers = parseIce(s.optJSONArray("ice_servers") ?: JSONArray())
                 connectSignal()
@@ -171,6 +197,10 @@ class StreamActivity : AppCompatActivity() {
             root.addView(menuBtn, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.CENTER_HORIZONTAL))
         }
         buildWizardUi(root)
+        padFx = PadFxView(this)
+        root.addView(padFx, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        inputListener.seed()
+        (getSystemService(INPUT_SERVICE) as android.hardware.input.InputManager).registerInputDeviceListener(inputListener, main)
         setContentView(root)
         setStatus("Arrancando la consola en la nube…")
     }
@@ -716,6 +746,7 @@ class StreamActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        runCatching { (getSystemService(INPUT_SERVICE) as android.hardware.input.InputManager).unregisterInputDeviceListener(inputListener) }
         closed = true
         teardown()
         renderer.release()

@@ -114,7 +114,13 @@
     box.innerHTML = '';
     $('#wii-add').hidden = !W || !W.supported;
     if (!W || !W.supported) {
-      $('#wii-help').textContent = 'Para usar tu Wiimote o tu Balance Board de verdad, abre CloudPlay en Chrome o Edge en tu ordenador, o en la app de escritorio de CloudPlay.';
+      var help = $('#wii-help');
+      help.textContent = 'Para usar tu Wiimote o tu Balance Board de verdad, abre CloudPlay en Chrome o Edge en tu ordenador, o usa la app de escritorio: ';
+      var a = el('a', '', 'descargar CloudPlay para Windows, Mac o Linux');
+      a.href = 'https://github.com/fieropirata275/CloudPlay/releases/latest';
+      a.target = '_blank';
+      a.rel = 'noopener';
+      help.appendChild(a);
       return;
     }
     $('#wii-help').textContent = 'Conéctalos a tu ordenador y la consola de la nube los verá como si estuvieran conectados a ella: puntero, vibración, altavoz, MotionPlus, Nunchuk, Classic y Balance Board.';

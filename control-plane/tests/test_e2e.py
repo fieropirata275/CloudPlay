@@ -255,3 +255,27 @@ def test_cloudflare_turn(monkeypatch):
     assert s[0]["urls"] == ["stun:stun.cloudflare.com:3478"]
     assert all(":53" not in u for u in s[1]["urls"]) and s[1]["username"] == "u"
     turn._cache.update(servers=[], expires=0)
+
+
+def test_session_options(client):
+    """Wiimote real, micro, cámara y accesorios: se validan, se guardan con la sesión y llegan al agente."""
+    tok = client.post("/api/auth/login", json={"email": "admin@test.local", "password": "supersecret"}).json()["access_token"]
+    H = {"Authorization": f"Bearer {tok}"}
+    node = client.post("/api/admin/nodes", json={"name": "acc-01", "capacity": 2}, headers=H).json()
+    game = client.post("/api/admin/games", json={"title": "Party", "platform": "gc", "rom_path": "gc/party.iso"}, headers=H).json()
+    with client.websocket_connect(f"/ws/agent?token={node['token']}") as agent:
+        agent.send_json({"type": "hello", "gpu": "nvidia", "capacity": 2, "platforms": ["gc"], "inventory": [], "sessions": []})
+        time.sleep(0.3)
+        bad = client.post("/api/sessions", json={"game_id": game["id"], "options": {"accessories": ["lanzallamas"]}}, headers=H)
+        assert bad.status_code == 422
+        too_many = client.post("/api/sessions", json={"game_id": game["id"], "options": {
+            "accessories": ["gc_bongos", "gc_mic", "gc_keyboard", "gc_dancemat", "singstar"]}}, headers=H)
+        assert too_many.status_code == 422
+        opts = {"wii_real": False, "mic": True, "camera": False, "accessories": ["gc_bongos", "gc_mic"]}
+        r = client.post("/api/sessions", json={"game_id": game["id"], "options": opts}, headers=H)
+        assert r.status_code == 201, r.text
+        assert r.json()["options"] == opts
+        start = recv_until(agent, "start")
+        assert start["options"] == opts
+        assert client.get(f"/api/sessions/{r.json()['id']}", headers=H).json()["options"] == opts
+        client.delete(f"/api/sessions/{r.json()['id']}", headers=H)

@@ -142,6 +142,19 @@ las Quadro/RTX Ax000 no. Dolphin depende mucho del rendimiento por núcleo.
 En partida: **Select+Start 1 s** (o Atrás/Esc) abre el menú: guardar/cargar estado, calidad,
 estadísticas, configurar mando, salir sin cerrar (y seguir en otro dispositivo) o cerrar el juego.
 
+### App de escritorio, Wiimote real y accesorios
+
+- **App de escritorio** (Windows, macOS, Linux) en cada [Release](https://github.com/fieropirata275/CloudPlay/releases):
+  el mismo cliente con los permisos resueltos, así el Wiimote, la Balance Board, el micro y la cámara funcionan
+  nada más conectarlos. Código en `clients/desktop` (Electron); `npm start` para probarla.
+- **Wiimote y Balance Board reales** del ordenador del jugador → Dolphin de la nube (puente HID con una libhidapi
+  propia, sin módulos del kernel). Puntero, altavoz, vibración, MotionPlus y extensiones.
+- **Micro y cámara** del jugador como micros de SingStar, micro de GameCube o EyeToy.
+- **Accesorios**: Buzz!, guitarra, batería, GunCon 2, teclado y ratón USB (PS2); bongos, alfombra, micro y teclado (GameCube).
+- **Animaciones** de mando conectado / desconectado con el estilo de cada consola (web, teles y Android).
+
+Guía para jugadores: [docs/MANDOS.md](docs/MANDOS.md).
+
 ### Mandos originales (PS2, GameCube) y cualquier mando USB
 
 Los mandos de PS2 y GameCube se conectan al ordenador, tele o Android con su adaptador USB (Mayflash, Super Dual Box,
@@ -155,9 +168,9 @@ adaptadores genéricos de PS2…). CloudPlay los traduce al mando que esperan lo
    modelo de mando. En la web está en **Mandos** (biblioteca) con **prueba en vivo** de botones, sticks y gatillos.
 3. Si se conecta un mando desconocido, la app ofrece configurarlo.
 
-Límites: los botones sensibles a la presión del DualShock 2 llegan como normales (casi ningún adaptador los manda). El
-adaptador oficial de Nintendo para GameCube no aparece como mando en Windows (necesitaría su driver aparte), y el Wiimote
-original todavía no se puede usar (de momento la Wii se juega con un mando normal).
+Límites: los botones sensibles a la presión del DualShock 2 llegan como normales (casi ningún adaptador los manda) y el
+adaptador oficial de Nintendo para GameCube no aparece como mando en Windows (necesitaría su driver aparte). El resto,
+en [docs/MANDOS.md](docs/MANDOS.md#límites-conocidos).
 
 ## 4. Desarrollo y pruebas
 
@@ -171,7 +184,10 @@ cd control-plane && pytest -q            # flujo completo de API, agente, señal
 cd worker/session && Xvfb :99 & DISPLAY=:99 python3 tests/loopback_test.py   # streamer WebRTC real
 cd tests/e2e && ./run.sh                 # navegador real jugando contra session.py
 cd clients/android && ./gradlew testDebugUnitTest   # protocolo + asistente de mandos
-node tests/web/pads.test.js              # mapeo de mandos web (perfiles SDL, hat, asistente)
+node tests/web/pads.test.js              # mapeo de mandos web (perfiles SDL, hat, asistente, Buzz!)
+python -m pytest worker/session/tests/test_hidbridge.py   # puente HID del Wiimote
+tests/wii/run.sh cloudplay/session:local # Dolphin de verdad conectando un Wiimote y una Balance Board simulados
+cd tests/e2e && E2E_WII=1 ./run.sh       # (también E2E_MEDIA, E2E_ACC, E2E_DESKTOP) navegador/app -> nube
 ```
 
 Qué está verificado y qué no: ver [la sección de verificación](#verificación).

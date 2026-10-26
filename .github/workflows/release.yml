@@ -96,8 +96,41 @@ jobs:
           curl -fsSL https://github.com/$GITHUB_REPOSITORY/releases/latest/download/get.sh | sudo bash -s -- node --cp-url https://play.empresa.com --join-token TOKEN
           \`\`\`
 
+          **App de escritorio para jugadores** (Wiimote, Balance Board, micro y cámara sin pedir permisos): Windows
+          (instalador o portable), macOS (.dmg) y Linux (.AppImage / .deb), más abajo en esta página.
+
           Imágenes: \`ghcr.io/$OWNER/cloudplay-{control-plane,agent,session,web}:$VERSION\` · Guía: [docs/DEPLOY.md](https://github.com/$GITHUB_REPOSITORY/blob/$VERSION/docs/DEPLOY.md)
           NOTES
           gh release create "$VERSION" dist/cloudplay.tar.gz dist/get.sh dist/SHA256SUMS \
             --title "CloudPlay $VERSION" --notes-file notes.md --target "$GITHUB_SHA" \
             || gh release upload "$VERSION" dist/cloudplay.tar.gz dist/get.sh dist/SHA256SUMS --clobber
+
+  desktop:
+    name: App de escritorio (${{ matrix.os }})
+    needs: release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22", cache: npm, cache-dependency-path: clients/desktop/package-lock.json }
+      - name: Compilar CloudPlay de escritorio
+        working-directory: clients/desktop
+        shell: bash
+        run: |
+          npm ci --no-audit --no-fund
+          npm pkg set version="${VERSION#v}"
+          npm run dist
+      - name: Subir los instaladores a la Release
+        working-directory: clients/desktop/dist
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          shopt -s nullglob
+          files=(*.AppImage *.deb *.exe *.dmg)
+          ls -la "${files[@]}"
+          gh release upload "$VERSION" "${files[@]}" --clobber -R "$GITHUB_REPOSITORY"

@@ -1,0 +1,79 @@
+{
+  "name": "cloudplay-desktop",
+  "productName": "CloudPlay",
+  "version": "1.3.0",
+  "description": "CloudPlay para Windows, macOS y Linux: tus consolas en la nube como si estuvieran en tu ordenador",
+  "author": {
+    "name": "NeuroFix IT",
+    "email": "kike1212bg@gmail.com"
+  },
+  "license": "UNLICENSED",
+  "main": "main.js",
+  "scripts": {
+    "web": "node scripts/copy-web.js",
+    "start": "npm run web && electron .",
+    "dist": "npm run web && electron-builder --publish never",
+    "check": "node scripts/check.js"
+  },
+  "devDependencies": {
+    "electron": "44.7.0",
+    "electron-builder": "26.17.0"
+  },
+  "build": {
+    "appId": "it.neurofix.cloudplay",
+    "productName": "CloudPlay",
+    "artifactName": "CloudPlay-${version}-${os}-${arch}.${ext}",
+    "files": [
+      "main.js",
+      "web/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Game",
+      "maintainer": "NeuroFix IT",
+      "artifactName": "CloudPlay-${version}-linux-${arch}.${ext}"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "CloudPlay",
+      "artifactName": "CloudPlay-${version}-windows-instalador.${ext}"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.games",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Para los micros de SingStar y el micrófono de GameCube",
+        "NSCameraUsageDescription": "Para usar tu cámara como EyeToy",
+        "NSBluetoothAlwaysUsageDescription": "Para usar tu Wiimote y tu Balance Board"
+      }
+    },
+    "publish": null,
+    "portable": {
+      "artifactName": "CloudPlay-${version}-windows-portable.${ext}"
+    }
+  },
+  "homepage": "https://github.com/fieropirata275/CloudPlay"
+}

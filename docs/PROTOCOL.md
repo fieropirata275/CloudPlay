@@ -53,6 +53,11 @@ corrige el estado (sin botones pegados). Los clientes reenvían el estado cada 1
 ### type = 2 · Guide/Home (4 bytes)
 `[2, pad, pressed(0|1), 0]`
 
+### type = 4 · ratón del jugador (6 bytes, solo con GunCon 2 o ratón USB)
+`[4, botones, x lo, x hi, y lo, y hi]` · botones: bit 0 izquierdo, bit 1 derecho, bit 2 central · `x`, `y` de 0 a
+65535 sobre la imagen del juego (sin las bandas negras). Estado completo, igual que los mandos. El worker lo
+inyecta en el display virtual con XTest (`xinject.py`).
+
 ### Bits de `buttons` (orden W3C "standard gamepad")
 
 | bit | botón | Xbox | PS2 | GameCube | Wii (Nunchuk) |
@@ -86,9 +91,42 @@ PCSX2/Dolphin están mapeados sobre ese mando con SDL.
 | `keyframe` | cliente → worker | fuerza IDR |
 | `savestate` / `loadstate` / `nextslot` / `screenshot` | cliente → worker | atajo del emulador (xdotool) |
 | `quit` | cliente → worker | cierra el emulador limpiamente (vuelca memory cards) |
+| `key {c, d}` | cliente → worker | tecla del jugador (`KeyboardEvent.code`, `d` 1 pulsada / 0 suelta) para teclado USB de PS2 o teclado de GameCube |
 | `hello {encoder, bitrate}` | worker → cliente | al abrir el canal |
 | `toast {text}` | worker → cliente | confirmación de acciones |
 | `bye {reason}` | worker → cliente | `emulator-exit`, errores de stream |
+
+## 3b. Canales `hid` y `hidfast`: Wiimote y Balance Board reales (solo en Wii)
+
+El Wiimote del jugador, conectado a SU ordenador (Bluetooth o DolphinBar) y leído con WebHID, llega informe a
+informe a Dolphin, que lo ve como un Wiimote real conectado a la consola. Ver `worker/session/cloudplay/hidbridge.py`
+y `worker/session/hidshim/` (libhidapi propia de Dolphin).
+
+| Mensaje | Dirección | Formato |
+|---|---|---|
+| vincular | cliente → worker | `[1, id, tipo]` · tipo 0 Wiimote, 1 Balance Board |
+| desvincular | cliente → worker | `[2, id]` |
+| informe | ambos | `[3, id, report_id, datos...]` (el informe HID tal cual) |
+| estado | worker → cliente | `[4, id, 1/0]` · Dolphin lo ha cogido / soltado (para la animación) |
+
+`hid` es fiable y ordenado (lecturas de memoria, acks, estado); `hidfast` no reintenta y lleva los informes
+continuos `0x30`-`0x3F` (botones, IR, acelerómetro, extensión), donde el siguiente sustituye al anterior.
+
+## 3c. Subida de micro y cámara
+
+Si la sesión lleva `mic` o `camera` (o un accesorio que los usa), la offer del worker añade pistas `recvonly`:
+audio Opus (PT 109) y vídeo VP8 (PT 97). El cliente les engancha `getUserMedia` (`sendonly`). El audio acaba en el
+micro virtual de PulseAudio (`cloudplay_micsrc`, el micro por defecto de los emuladores) y el vídeo en
+`/dev/video0` (v4l2loopback), que PCSX2 usa como EyeToy.
+
+## 3d. Opciones de la partida (`POST /api/sessions`)
+
+```json
+{"game_id": "…", "options": {"wii_real": true, "mic": false, "camera": false, "accessories": ["gc_bongos"]}}
+```
+Accesorios válidos (máx. 4): `singstar`, `headset`, `eyetoy`, `buzz`, `guitar`, `drums`, `guncon2`, `usb_keyboard`,
+`usb_mouse` (PS2) · `gc_bongos`, `gc_mic`, `gc_keyboard`, `gc_dancemat` (GameCube). Llegan al agente en el comando
+`start` y a la sesión como `SESSION_OPTIONS`; `worker/session/accessories.py` configura PCSX2 y Dolphin.
 
 ### Bitrate adaptativo (en el cliente)
 

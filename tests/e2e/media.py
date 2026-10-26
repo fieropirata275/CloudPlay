@@ -21,7 +21,7 @@ async def main():
         await pg.fill("#email", "admin@local"); await pg.fill("#password", "devpassword"); await pg.click("#login-form button[type=submit]")
         await pg.wait_for_timeout(1200)
         # El jugador ha elegido SingStar + EyeToy para este juego
-        await pg.evaluate("CP.Extras = { optionsFor: function () { return Promise.resolve({ mic: true, camera: true, accessories: ['singstar', 'eyetoy'] }); } }")
+        await pg.evaluate("CP.Extras.optionsFor = function () { return Promise.resolve({ mic: true, camera: true, accessories: ['singstar', 'eyetoy'] }); }")
         await pg.click(".filter[data-platform=ps2]"); await pg.wait_for_timeout(400)
         await pg.click("#grid .tile >> nth=0")
         for _ in range(40):
