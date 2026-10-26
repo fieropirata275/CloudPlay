@@ -300,6 +300,8 @@ class Agent:
             "RESOLUTION": RESOLUTION,
             "IDLE_TIMEOUT": IDLE_TIMEOUT,
             "MAX_PADS": MAX_PADS,
+            # Wiimote real, micro, cámara y accesorios que trae el jugador (los valida el orquestador)
+            "SESSION_OPTIONS": json.dumps(msg.get("options") or {}),
             **g["env"],
             **EXTRA_ENV,
         }

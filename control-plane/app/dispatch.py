@@ -5,6 +5,7 @@ lock en Redis) intenta colocarlas cada 2 s en orden de llegada y avisa a los cli
 de su posición por el canal de señalización (`{"type": "queue", "position": n}`).
 """
 import asyncio
+import json
 import logging
 from datetime import timedelta, timezone
 
@@ -22,6 +23,14 @@ log = logging.getLogger("cloudplay.dispatch")
 
 def _aware(dt):
     return dt if dt is None or dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _options(s: Session) -> dict:
+    try:
+        o = json.loads(s.options or "{}")
+        return o if isinstance(o, dict) else {}
+    except ValueError:
+        return {}
 
 
 async def try_place(db: AsyncSession, s: Session, game: Game) -> dict | None:
@@ -43,6 +52,7 @@ async def try_place(db: AsyncSession, s: Session, game: Game) -> dict | None:
         "rom_path": game.rom_path,
         "title": game.title,
         "user_id": s.user_id,
+        "options": _options(s),
         "_node": node.id,
     }
 

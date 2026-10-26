@@ -26,6 +26,10 @@ jobs:
       - uses: azure/setup-helm@v4
       - name: Chart de Helm
         run: helm lint deploy/helm/cloudplay --set cloudflared.token=x
+      - name: Puente HID del Wiimote (sesión)
+        run: python -m pytest -q worker/session/tests/test_hidbridge.py
+      - name: libhidapi de CloudPlay compila sin avisos
+        run: gcc -O2 -Wall -Wextra -Werror -shared -fPIC -fvisibility=hidden -o /tmp/libhidapi-hidraw.so.0 worker/session/hidshim/hidshim.c
       - name: Mandos (perfiles, hat y asistente con mandos simulados)
         run: node tests/web/pads.test.js
       - name: El cliente web sigue siendo ES5 (teles antiguas)

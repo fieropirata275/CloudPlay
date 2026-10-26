@@ -359,3 +359,75 @@ label input { margin-top: 0.3rem; color: var(--glass); font-size: 1rem; }
 .wiz-ask { color: var(--mist); text-align: center; margin-top: 1.2rem; }
 .wiz-prompt { color: var(--glass); font-family: var(--display); font-size: 1.7rem; text-align: center; margin: 0.2rem 0 0.4rem; min-height: 2.2em; }
 @media (max-width: 480px) { .wiz-prompt { font-size: 1.3rem; } .pad-actions { grid-template-columns: 1fr; } .pad-actions .btn:only-child { grid-column: auto; } }
+
+/* Wiimote y Balance Board reales */
+.wii-box { border-top: 1px solid var(--ink-3); margin-top: 0.4rem; padding-top: 0.9rem; }
+.wii-box h3 { color: var(--glass); font-size: 1rem; margin: 0; }
+.wii-box > * + * { margin-top: 0.55rem; }
+.wii-box > .btn { width: 100%; }
+.wii-how { color: var(--mist); font-size: 0.85rem; }
+.wii-how summary { cursor: pointer; color: var(--glass); }
+.wii-how ol { padding-left: 1.2rem; margin: 0.5rem 0 0; }
+.wii-how li + li { margin-top: 0.4rem; }
+.wii-how b { color: var(--glass); }
+.wii-leds { display: inline-flex; gap: 0.25rem; margin-left: 0.4rem; vertical-align: middle; }
+.wii-leds i { width: 0.45rem; height: 0.45rem; border-radius: 50%; background: var(--ink-3); }
+.wii-leds i.on { background: var(--wii); box-shadow: 0 0 6px var(--wii); }
+
+/* ---------- Conexión / desconexión de mandos en partida (js/padfx.js) ---------- */
+.pfx-box { position: fixed; top: 1rem; right: 1rem; z-index: 30; display: flex; flex-direction: column; align-items: flex-end; gap: 0.6rem; pointer-events: none; }
+.pfx { position: relative; overflow: hidden; display: flex; align-items: center; gap: 0.85rem; min-width: 15.5rem; padding: 0.75rem 3rem 0.75rem 0.9rem;
+  border-radius: var(--r-md); opacity: 0; transform: translateY(-14px) scale(0.95);
+  transition: opacity 0.35s ease, transform 0.55s cubic-bezier(0.2, 1.4, 0.3, 1); }
+.pfx.pfx-in { opacity: 1; transform: none; }
+.pfx.pfx-out { opacity: 0; transform: translateY(-10px) scale(0.97); transition-duration: 0.45s; }
+.pfx-art { flex: none; display: flex; }
+.pfx-sil { width: 3.5rem; height: 2.3rem; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round;
+  stroke-dasharray: 520; stroke-dashoffset: 520; }
+.pfx-in .pfx-sil { animation: pfx-draw 1.1s 0.1s ease-out forwards; }
+.pfx-off.pfx-in .pfx-sil { stroke-dashoffset: 0; animation: pfx-fade 1.2s 0.3s ease-in forwards; }
+@keyframes pfx-draw { to { stroke-dashoffset: 0; } }
+@keyframes pfx-fade { to { opacity: 0.25; } }
+.pfx-txt b { display: block; font-family: var(--display); font-size: 0.95rem; line-height: 1.2; }
+.pfx-txt small { display: block; font-size: 0.78rem; margin-top: 0.1rem; }
+
+/* PS2: noche azul, torres de luz que suben */
+.pfx-ps2 { background: radial-gradient(circle at 15% 0%, #1f2f9a 0%, #070a24 65%); color: #a9c8ff; border: 1px solid rgba(90, 130, 255, 0.45);
+  box-shadow: 0 0 34px rgba(40, 80, 255, 0.35); }
+.pfx-ps2 .pfx-txt b { text-transform: uppercase; letter-spacing: 0.14em; font-size: 0.85rem; color: #e3ecff; }
+.pfx-towers { position: absolute; right: 0.7rem; bottom: 0; top: 0; display: flex; gap: 3px; align-items: flex-end; opacity: 0.65; }
+.pfx-towers i { width: 5px; height: 15%; background: linear-gradient(#8fb8ff, rgba(143, 184, 255, 0)); border-radius: 2px 2px 0 0;
+  animation: pfx-tower 1.3s ease-in-out infinite alternate; }
+@keyframes pfx-tower { from { height: 12%; } to { height: 88%; } }
+.pfx-ps2.pfx-off { color: #6c7499; }
+.pfx-ps2.pfx-off .pfx-towers i { animation: none; height: 12%; background: #ff5a6e; }
+
+/* GameCube: índigo, un cubo que entra rodando */
+.pfx-gc { background: linear-gradient(135deg, #4330b5, #191055); color: #ece7ff; border-radius: 1.15rem; border: 1px solid rgba(190, 175, 255, 0.35);
+  box-shadow: 0 10px 30px rgba(30, 10, 90, 0.5); }
+.pfx-gc .pfx-txt small { color: #b9aaff; }
+.pfx-cube { position: absolute; right: 0.9rem; top: 50%; width: 1.3rem; height: 1.3rem; margin-top: -0.65rem; }
+.pfx-cube i { display: block; width: 100%; height: 100%; border-radius: 3px; background: #9c8aff; box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.45), 0 0 14px rgba(156, 138, 255, 0.8);
+  animation: pfx-roll 0.95s cubic-bezier(0.45, 0, 0.3, 1.35) both; }
+@keyframes pfx-roll { from { transform: translateX(-12rem) rotate(-450deg); } to { transform: none; } }
+.pfx-gc.pfx-off { color: #9d95c8; }
+.pfx-gc.pfx-off .pfx-cube i { animation: pfx-rollout 0.9s 0.4s ease-in forwards; }
+@keyframes pfx-rollout { to { transform: translateX(3rem) rotate(270deg); opacity: 0; } }
+
+/* Wii: blanco brillante; los 4 LEDs buscan y se queda encendido el del jugador */
+.pfx-wii { background: linear-gradient(#ffffff, #e6edf4); color: #2b2f36; border-radius: 1.7rem; border: 2px solid #a8dcf8;
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.28), inset 0 1px 0 #fff; padding-bottom: 1.25rem; }
+.pfx-wii .pfx-sil { color: #8c97a3; }
+.pfx-wii .pfx-txt small { color: #1f9be0; font-weight: 700; }
+.pfx-leds { position: absolute; left: 5.2rem; bottom: 0.5rem; display: flex; gap: 0.35rem; }
+.pfx-leds i { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: #c8d2db; }
+.pfx-on.pfx-in .pfx-leds i { animation: pfx-scan 0.5s steps(1) 3; }
+.pfx-on.pfx-in .pfx-leds i.me { animation: pfx-scan 0.5s steps(1) 3, pfx-me 0.2s 1.5s forwards; }
+@keyframes pfx-scan { 0% { background: #c8d2db; box-shadow: none; } 50% { background: #36b4ff; box-shadow: 0 0 7px #36b4ff; } }
+@keyframes pfx-me { to { background: #36b4ff; box-shadow: 0 0 9px #36b4ff; } }
+.pfx-wii.pfx-off .pfx-txt small { color: #8a96a3; }
+
+@media (max-width: 600px) { .pfx-box { right: 50%; transform: translateX(50%); align-items: center; } .pfx { min-width: 13.5rem; } }
+@media (prefers-reduced-motion: reduce) {
+  .pfx, .pfx-sil, .pfx-towers i, .pfx-cube i, .pfx-leds i { animation: none !important; transition: opacity 0.2s !important; stroke-dashoffset: 0; }
+}

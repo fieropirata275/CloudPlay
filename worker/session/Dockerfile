@@ -1,5 +1,12 @@
 # Imagen de sesión: Xvfb + PulseAudio + VirtualGL + PCSX2 + Dolphin + streamer GStreamer/WebRTC.
 # docker build -t cloudplay/session:latest worker/session
+# libhidapi de CloudPlay para Dolphin: los Wiimotes / Balance Boards reales del jugador llegan por sockets
+FROM debian:trixie-slim AS hidshim
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev && rm -rf /var/lib/apt/lists/*
+COPY hidshim/hidshim.c /src/hidshim.c
+RUN mkdir -p /out && gcc -O2 -Wall -shared -fPIC -fvisibility=hidden -Wl,-soname,libhidapi-hidraw.so.0 \
+      -o /out/libhidapi-hidraw.so.0 /src/hidshim.c
+
 # Debian trixie: es la distribución que aún empaqueta Dolphin (Ubuntu 24.04 lo quitó y el PPA ya no existe)
 FROM debian:trixie-slim
 
@@ -36,6 +43,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN userdel -r ubuntu 2>/dev/null || true \
  && useradd -m -u 1000 -s /bin/bash player
 
+COPY --from=hidshim /out/libhidapi-hidraw.so.0 /opt/cloudplay/lib/libhidapi-hidraw.so.0
 COPY cloudplay /opt/cloudplay
 COPY templates /opt/cloudplay/templates
 COPY entrypoint.sh setup-emu.sh gc-menu.sh pulse.pa /opt/cloudplay/

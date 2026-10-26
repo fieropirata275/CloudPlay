@@ -29,7 +29,44 @@
       },
       onMenu: function () { if (opts.onMenu) opts.onMenu(); }
     });
+    this.wii = null;
+    this.hidCh = this.hidFastCh = null;
+    // Mandos que se enchufan o se van durante la partida: animación de la consola (js/padfx.js)
+    this._onPadConn = function (e) { self._padEvent(e.gamepad, true); };
+    this._onPadDisc = function (e) { self._padEvent(e.gamepad, false); };
+    root.addEventListener('gamepadconnected', this._onPadConn);
+    root.addEventListener('gamepaddisconnected', this._onPadDisc);
   }
+
+  Player.prototype.platform = function () {
+    return this.session && this.session.game ? this.session.game.platform : '';
+  };
+
+  Player.prototype._padEvent = function (gp, connected) {
+    if (this.closed || !gp || !this.o.onPadEvent) return;
+    var d = CP.Pads ? CP.Pads.describe(gp) : { name: gp.id };
+    this.o.onPadEvent({ kind: 'pad', player: gp.index + 1, connected: connected, name: d.name });
+  };
+
+  /** Wiimotes / Balance Board reales del jugador: puente HID con la consola de la nube (js/wiilink.js) */
+  Player.prototype._startWii = function () {
+    var self = this;
+    if (this.wii || !this.hidCh || !CP.WiiLink || !CP.WiiLink.supported || this.platform() !== 'wii') return;
+    var send = function (ch) {
+      return function (buf) { if (ch && ch.readyState === 'open') ch.send(buf); };
+    };
+    this.wii = CP.WiiLink.attach({
+      sendReliable: send(this.hidCh),
+      sendFast: function (buf) {
+        var ch = self.hidFastCh && self.hidFastCh.readyState === 'open' ? self.hidFastCh : self.hidCh;
+        send(ch)(buf);
+      },
+      onState: function (s) {
+        if (self.o.onPadEvent) self.o.onPadEvent({ kind: s.kind, player: s.id + 1, connected: s.connected, name: s.name });
+      }
+    });
+    this.hidCh.onmessage = function (e) { if (self.wii) self.wii.onMessage(e.data); };
+  };
 
   Player.prototype._stage = function (name, data) {
     if (this.o.onStage) this.o.onStage(name, data || {});
@@ -143,6 +180,12 @@
       var ch = ev.channel;
       ch.binaryType = 'arraybuffer';
       if (ch.label === 'input') self.inputCh = ch;
+      if (ch.label === 'hidfast') self.hidFastCh = ch;
+      if (ch.label === 'hid') {
+        if (self.wii) { self.wii.stop(); self.wii = null; }  // cliente nuevo tras reconectar: se vuelve a vincular
+        self.hidCh = ch;
+        ch.onopen = function () { self._startWii(); };
+      }
       if (ch.label === 'control') {
         self.controlCh = ch;
         ch.onmessage = function (e) { self._onControl(e.data); };
@@ -207,6 +250,9 @@
 
   Player.prototype.close = function () {
     this.closed = true;
+    if (this.wii) { this.wii.stop(); this.wii = null; }
+    root.removeEventListener('gamepadconnected', this._onPadConn);
+    root.removeEventListener('gamepaddisconnected', this._onPadDisc);
     clearInterval(this._statsTimer);
     clearInterval(this._pingTimer);
     this.input.stop();

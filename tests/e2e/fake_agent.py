@@ -15,7 +15,9 @@ async def main():
             if m["type"] == "start":
                 env = dict(os.environ, SESSION_ID=m["session_id"], WORKER_TOKEN=m["worker_token"], SIGNAL_URL=m["signal_url"],
                            PLATFORM=m["platform"], ROM="/library/" + m["rom_path"], DISPLAY_NUM="99", ENCODER="x264",
-                           ICE_SERVERS="[]", USE_VGL="0", IDLE_TIMEOUT="60", BITRATE_KBPS="3000")
+                           ICE_SERVERS="[]", USE_VGL="0", IDLE_TIMEOUT="60", BITRATE_KBPS="3000",
+                           SESSION_OPTIONS=json.dumps(m.get("options") or {}))
+                print("opciones de la sesión:", m.get("options"), flush=True)
                 procs[m["session_id"]] = subprocess.Popen([os.environ.get("GST_PYTHON", "python3"), HERE + "/run_session.py"], env=env,
                     stdout=open(HERE + "/session.log", "w"), stderr=subprocess.STDOUT)
                 await ws.send(json.dumps({"type": "session_state", "session_id": m["session_id"], "status": "running"}))

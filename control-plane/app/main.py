@@ -21,7 +21,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 
 
 # Columnas nuevas en tablas que ya existían (create_all no altera tablas). Idempotente.
-_NEW_COLUMNS = [("nodes", "draining", "BOOLEAN NOT NULL DEFAULT FALSE")]
+_NEW_COLUMNS = [("nodes", "draining", "BOOLEAN NOT NULL DEFAULT FALSE"), ("sessions", "options", "TEXT")]
 
 
 async def _migrate(conn) -> None:

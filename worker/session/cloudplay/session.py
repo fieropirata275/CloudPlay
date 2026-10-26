@@ -31,6 +31,16 @@ IDLE_TIMEOUT = int(E.get("IDLE_TIMEOUT", "180"))
 ENCODER = E.get("ENCODER", "auto")
 USE_VGL = E.get("USE_VGL", "auto")
 VGL_DISPLAY = E.get("VGL_DISPLAY", "egl")
+HID_DIR = E.get("CLOUDPLAY_HID_DIR", "/tmp/cloudplay-hid")
+SHIM_LIB = "/opt/cloudplay/lib"  # libhidapi de CloudPlay (hidshim): Wiimotes reales vía puente
+
+
+def session_options() -> dict:
+    try:
+        o = json.loads(E.get("SESSION_OPTIONS") or "{}")
+        return o if isinstance(o, dict) else {}
+    except ValueError:
+        return {}
 PLAYER_UID = PLAYER_GID = 1000
 
 
@@ -64,6 +74,12 @@ class Session:
 
         from .streamer import Streamer  # importa GStreamer tras bajar privilegios
 
+        # Wiimotes / Balance Board reales del jugador: solo en Wii (Dolphin los busca por hidapi)
+        self.hid = None
+        if PLATFORM == "wii":
+            from .hidbridge import HidBridge
+            self.hid = HidBridge(HID_DIR, lambda data: self.streamer.send_hid(data))
+
         self.streamer = Streamer(
             display=DISPLAY,
             send=self.send_threadsafe,
@@ -75,6 +91,7 @@ class Session:
             bitrate_kbps=int(E.get("BITRATE_KBPS", "8000")),
             max_bitrate_kbps=int(E.get("MAX_BITRATE_KBPS", "20000")),
             ice_port_range=ice_port_range(),
+            on_hid=self.hid.on_message if self.hid else None,
         )
 
     # ------------------------------------------------------------ emulator
@@ -82,6 +99,10 @@ class Session:
         use_vgl = USE_VGL == "1" or (USE_VGL == "auto" and self.streamer.encoder_name != "x264")
         cmd = command(PLATFORM, ROM, use_vgl, VGL_DISPLAY)
         env = dict(os.environ, DISPLAY=DISPLAY, SDL_JOYSTICK_DISABLE_UDEV="1", QT_QPA_PLATFORM="xcb")
+        if PLATFORM in ("gc", "wii") and os.path.isdir(SHIM_LIB):
+            # Dolphin carga nuestra libhidapi: los "Wiimotes" son los sockets del puente HID
+            env["LD_LIBRARY_PATH"] = SHIM_LIB + (":" + env["LD_LIBRARY_PATH"] if env.get("LD_LIBRARY_PATH") else "")
+            env["CLOUDPLAY_HID_DIR"] = HID_DIR
         log.info("lanzando: %s", " ".join(cmd))
         self.emu = subprocess.Popen(cmd, env=env, cwd=os.path.expanduser("~"))
 
@@ -141,6 +162,8 @@ class Session:
     def _restart_stream(self) -> None:
         for p in self.pads:
             p.release_all()
+        if self.hid:
+            self.hid.unlink_all()  # el cliente nuevo vuelve a vincular los suyos
         self.decoder.reset()
         self.streamer.start()
 
@@ -227,6 +250,8 @@ class Session:
         await self.stopping.wait()
         for t in tasks:
             t.cancel()
+        if self.hid:
+            self.hid.unlink_all()
         self.streamer.shutdown()
         if self.emu and self.emu.poll() is None:
             self.emu.terminate()  # PCSX2/Dolphin vuelcan memcards al cerrar limpio

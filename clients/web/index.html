@@ -202,6 +202,26 @@
       <div id="pads-main">
         <p class="muted" id="pads-empty">Conecta un mando y pulsa cualquier botón. Valen los originales de PS2 y GameCube con su adaptador USB.</p>
         <div id="pads-list"></div>
+        <section class="wii-box" aria-labelledby="wii-title">
+          <h3 id="wii-title">Wiimote y Balance Board</h3>
+          <p class="pad-sub" id="wii-help"></p>
+          <div id="wii-list"></div>
+          <button class="btn" id="wii-add">Añadir Wiimote o Balance Board</button>
+          <details class="wii-how" id="wii-how">
+            <summary data-focus>Cómo conectarlo a tu ordenador</summary>
+            <ol>
+              <li><b>Con una DolphinBar de Mayflash</b> (lo más cómodo): ponla en <b>modo 4</b>, pulsa el botón rojo
+                <b>SYNC</b> del Wiimote junto a ella y ya está. Además hace de barra de sensores para el puntero.</li>
+              <li><b>Con el Bluetooth del ordenador</b>: en Windows, <i>Configuración → Bluetooth y dispositivos → Agregar
+                dispositivo → Bluetooth</i>; en Mac o Linux, los ajustes de Bluetooth. Pulsa <b>SYNC</b> (bajo la tapa de las
+                pilas; en la Balance Board, dentro del hueco de las pilas) y elige <b>Nintendo RVL-CNT-01</b> o
+                <b>RVL-WBC-01</b>. Si pide PIN, déjalo vacío.</li>
+              <li>Pulsa <b>Añadir Wiimote o Balance Board</b> aquí y elígelo en la lista del navegador. Se queda recordado.</li>
+              <li>Para el puntero hace falta una <b>barra de sensores</b> delante de la pantalla: la de tu Wii (con un
+                adaptador USB), una inalámbrica de pilas o la DolphinBar.</li>
+            </ol>
+          </details>
+        </section>
         <button class="btn primary" id="pads-close" data-autofocus>Listo</button>
         <p class="hint">Mientras esta hoja está abierta el mando solo se prueba: ciérrala con el ratón, el teclado, el mando de la tele o manteniendo START.</p>
       </div>
@@ -243,6 +263,8 @@
   <script src="js/nav.js"></script>
   <script src="js/player.js"></script>
   <script src="js/admin.js"></script>
+  <script src="js/wiilink.js"></script>
+  <script src="js/padfx.js"></script>
   <script src="js/padsui.js"></script>
   <script src="js/app.js"></script>
 </body>

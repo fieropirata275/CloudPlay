@@ -368,8 +368,23 @@
     return { left: m.left + m.width / 2 - w / 2, top: m.top + m.height / 2 - h / 2, width: w, height: h };
   }
 
+  /** Lo que el jugador trae a la partida: Wiimote real, micro, cámara, accesorios (lo emula la nube) */
+  function sessionOptions(game) {
+    var o = { wii_real: false, mic: false, camera: false, accessories: [] }, jobs = [];
+    if (game && game.platform === 'wii' && CP.WiiLink && CP.WiiLink.supported) {
+      jobs.push(CP.WiiLink.known().then(function (l) { o.wii_real = l.length > 0; }));
+    }
+    if (game && CP.Extras) jobs.push(CP.Extras.optionsFor(game).then(function (x) {
+      o.mic = !!x.mic; o.camera = !!x.camera; o.accessories = x.accessories || [];
+    }));
+    return Promise.all(jobs).then(function () { return o; }, function () { return o; });
+  }
+
   function startGame(gameId, tile) {
-    CP.api('POST', '/api/sessions', { game_id: gameId }).then(function (s) {
+    var game = (state.games || []).filter(function (x) { return x.id === gameId; })[0];
+    sessionOptions(game).then(function (options) {
+      return CP.api('POST', '/api/sessions', { game_id: gameId, options: options });
+    }).then(function (s) {
       state.session = s;
       // Elemento compartido: la carátula vuela hasta la silueta de la pantalla de arranque
       var art = tile && tile.querySelector('.case');
@@ -530,6 +545,8 @@
           if (name === 'live') { CP.navSetActive(false); if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); }
         },
         onToast: toast,
+        // mando o Wiimote que entra o sale durante la partida: animación con el estilo de la consola
+        onPadEvent: function (e) { if (CP.PadFx) CP.PadFx.show(s.game ? s.game.platform : 'ps2', e); },
         onStats: drawStats,
         onMenu: openMenu,
         onEnd: function (reason) {

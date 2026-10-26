@@ -93,8 +93,11 @@ class Streamer:
         max_bitrate_kbps: int = 20000,
         ice_port_range: tuple[int, int] | None = None,
         pulse_source: str = "cloudplay.monitor",
+        on_hid: Callable[[bytes], None] | None = None,
     ):
         self.display, self.send, self.on_input, self.on_control = display, send, on_input, on_control
+        self.on_hid = on_hid
+        self.hid_ch = None
         self.ice_servers, self.fps, self.pulse_source = ice_servers, fps, pulse_source
         self.encoder_name = pick_encoder(encoder)
         self.bitrate = bitrate_kbps
@@ -183,6 +186,14 @@ class Streamer:
             self.control_ch.connect("on-message-string", self._on_control_string)
             self.control_ch.connect("on-open", lambda ch: self._send_control({"t": "hello", "encoder": self.encoder_name, "bitrate": self.bitrate}))
             self._input_ch = inp  # mantener referencia
+            if self.on_hid is not None:
+                # Puente HID (Wiimote / Balance Board reales): "hid" fiable para lecturas de memoria, acks y
+                # estado; "hidfast" sin reintentos para los informes continuos de botones/IR/movimiento.
+                self.hid_ch = self.webrtc.emit("create-data-channel", "hid", None)
+                self.hid_ch.connect("on-message-data", lambda _ch, data: self.on_hid(bytes(data.get_data())))
+                fast = self.webrtc.emit("create-data-channel", "hidfast", opts)
+                fast.connect("on-message-data", lambda _ch, data: self.on_hid(bytes(data.get_data())))
+                self._hidfast_ch = fast
 
             promise = Gst.Promise.new_with_change_func(self._on_offer_created, None)
             self.webrtc.emit("create-offer", None, promise)
@@ -209,7 +220,15 @@ class Streamer:
             if self.pipe is not None:
                 self.pipe.get_bus().remove_signal_watch()
                 self.pipe.set_state(Gst.State.NULL)
-            self.pipe = self.webrtc = self.enc = self.control_ch = None
+            self.pipe = self.webrtc = self.enc = self.control_ch = self.hid_ch = None
+
+    def send_hid(self, data: bytes) -> None:
+        ch = self.hid_ch
+        if ch is not None:
+            try:
+                ch.emit("send-data", GLib.Bytes.new(data))
+            except Exception:  # noqa: BLE001 - canal cerrado
+                pass
 
     def shutdown(self) -> None:
         self.stop()

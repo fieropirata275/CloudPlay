@@ -67,6 +67,8 @@ class Session(Base):
     status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     worker_token_hash: Mapped[str] = mapped_column(String(64))
+    # Opciones de la partida (JSON): Wiimote real, micro, cámara, accesorios. Ver routes/sessions.py
+    options: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

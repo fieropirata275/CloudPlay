@@ -37,5 +37,11 @@ rm -f "$HERE/pad.log"
 cd "$HERE"
 DISPLAY=:99 python3 fake_agent.py "$NODE" > agent.log 2>&1 & PIDS+=($!)
 sleep 1.5
-python3 play.py
+if [ "${E2E_WII:-0}" = 1 ]; then
+  rm -f wii_hid.json
+  python3 wii_hid.py
+  grep -h "opciones de la sesión" agent.log || true
+else
+  python3 play.py
+fi
 echo "Estados de mando distintos recibidos por el worker:"; sort -u pad.log | head

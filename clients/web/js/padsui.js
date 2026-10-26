@@ -105,6 +105,50 @@
     });
     sig = signature();
   }
+  // ------------------------------------------------------------------ Wiimote / Balance Board reales
+  var wiiStops = [];
+  function stopWiiTests() { wiiStops.forEach(function (f) { try { f(); } catch (e) {} }); wiiStops = []; }
+  function renderWii() {
+    var W = CP.WiiLink, box = $('#wii-list');
+    stopWiiTests();
+    box.innerHTML = '';
+    $('#wii-add').hidden = !W || !W.supported;
+    if (!W || !W.supported) {
+      $('#wii-help').textContent = 'Para usar tu Wiimote o tu Balance Board de verdad, abre CloudPlay en Chrome o Edge en tu ordenador, o en la app de escritorio de CloudPlay.';
+      return;
+    }
+    $('#wii-help').textContent = 'Conéctalos a tu ordenador y la consola de la nube los verá como si estuvieran conectados a ella: puntero, vibración, altavoz, MotionPlus, Nunchuk, Classic y Balance Board.';
+    W.known().then(function (list) {
+      if (!open) return;
+      list.forEach(function (d, i) {
+        var card = el('div', 'pad-card');
+        var head = el('div', 'pad-head');
+        var name = el('strong', '', W.label(d) + ' ' + (i + 1));
+        var leds = el('span', 'wii-leds');
+        for (var k = 0; k < 4; k++) { var led = el('i', k === i % 4 ? 'on' : ''); leds.appendChild(led); }
+        name.appendChild(leds);
+        head.appendChild(name);
+        head.appendChild(el('span', 'badge standard', 'Vinculado'));
+        card.appendChild(head);
+        var sub = el('p', 'pad-sub', W.kindOf(d) ? 'Súbete y pulsa su botón para probarla.' : 'Pulsa botones: se iluminan abajo. Su LED indica el jugador.');
+        card.appendChild(sub);
+        var chips = el('div', 'chips');
+        ['↑', '↓', '←', '→', 'A', 'B', '1', '2', '−', '+', 'HOME'].forEach(function (t) { var c = el('span', 'chip', t); c.setAttribute('data-w', t); chips.appendChild(c); });
+        card.appendChild(chips);
+        var actions = el('div', 'pad-actions');
+        var rm = el('button', 'btn quiet', 'Quitar');
+        rm.addEventListener('click', function () { W.forget(d).then(renderWii, renderWii); });
+        actions.appendChild(rm);
+        card.appendChild(actions);
+        box.appendChild(card);
+        W.test(d, i, function (pressed) {
+          var cs = chips.querySelectorAll('.chip');
+          for (var j = 0; j < cs.length; j++) cs[j].classList.toggle('on', pressed.indexOf(cs[j].getAttribute('data-w')) >= 0);
+        }).then(function (stop) { wiiStops.push(stop); }, function () { sub.textContent = 'No se pudo abrir: ¿está encendido y conectado por Bluetooth?'; });
+      });
+    });
+  }
+
   function signature() {
     return P.list().map(function (gp) { return gp.index + gp.id + P.describe(gp).kind; }).join('|');
   }
@@ -195,6 +239,7 @@
     });
     P.ensureDb(function () { if (open && !wizard) render(); });
     render();
+    renderWii();
     show('main');
     h.openSheet($('#pads-sheet'));
     raf = root.requestAnimationFrame(live);
@@ -204,6 +249,7 @@
     if (!open) return;
     if (wizard) { wizard.stop(); wizard = null; }
     open = false;
+    stopWiiTests();
     root.cancelAnimationFrame(raf);
     CP.navPadPause(false);
     h.closeSheet($('#pads-sheet'));
@@ -229,6 +275,12 @@
     $('#wiz-skip').addEventListener('click', function () { if (wizard) wizard.skip(); });
     $('#wiz-back').addEventListener('click', function () { if (wizard) wizard.back(); });
     $('#wiz-cancel').addEventListener('click', cancelWizard);
+    $('#wii-add').addEventListener('click', function () {
+      CP.WiiLink.add().then(function (l) {
+        if (l.length) { h.toast(CP.WiiLink.label(l[0]) + ' vinculado'); if (CP.PadFx) CP.PadFx.show('wii', { kind: CP.WiiLink.kindOf(l[0]) ? 'board' : 'wiimote', player: 1, connected: true, name: CP.WiiLink.label(l[0]) }); }
+        renderWii();
+      }, function (e) { if (e && e.name !== 'NotFoundError' && e.message) h.toast(e.message); });
+    });
 
     // Mando nuevo: si lo conocemos, se avisa; si no, se ofrece configurarlo
     P.onConnect(function (gp, d) {

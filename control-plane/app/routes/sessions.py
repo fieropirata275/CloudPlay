@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from typing import Literal
+
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
 from .. import bus
@@ -14,8 +16,24 @@ from .catalog import game_dict
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
 
+# Accesorios que la consola de la nube puede emular con lo que el jugador tiene en su ordenador
+Accessory = Literal[
+    "singstar", "headset", "eyetoy", "buzz", "guitar", "drums", "guncon2", "usb_keyboard", "usb_mouse",  # PS2
+    "gc_bongos", "gc_mic", "gc_keyboard",  # GameCube
+    "wii_speak", "wii_keyboard",  # Wii (Wiimote, Nunchuk, Classic, Balance Board... van por wii_real)
+]
+
+
+class SessionOptions(BaseModel):
+    wii_real: bool = False  # Wiimotes / Balance Board reales del jugador (puente HID)
+    mic: bool = False  # el micro del ordenador del jugador viaja a la nube
+    camera: bool = False  # su cámara (EyeToy)
+    accessories: list[Accessory] = Field(default_factory=list, max_length=4)
+
+
 class CreateSession(BaseModel):
     game_id: str
+    options: SessionOptions = Field(default_factory=SessionOptions)
 
 
 def session_dict(s: Session, user: User, game: Game | None = None, position: int | None = None) -> dict:
@@ -59,7 +77,8 @@ async def create_session(body: CreateSession, user: User = Depends(current_user)
     if not await db.scalar(select(Node.id).where(Node.platforms.like(f"%,{game.platform},%")).limit(1)):
         raise HTTPException(503, "Ningún nodo sirve esta plataforma todavía")
 
-    s = Session(user_id=user.id, game_id=game.id, status="queued", worker_token_hash=sha256(new_secret()))
+    s = Session(user_id=user.id, game_id=game.id, status="queued", worker_token_hash=sha256(new_secret()),
+                options=body.options.model_dump_json())
     db.add(s)
     await db.flush()
 

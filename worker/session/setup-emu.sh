@@ -19,6 +19,23 @@ mkdir -p "$D/Config"
 for f in Dolphin.ini GFX.ini GCPadNew.ini WiimoteNew.ini Hotkeys.ini; do
   sed -e "s|@UPSCALE@|${UPSCALE}|g" "$T/dolphin/$f" > "$D/Config/$f"
 done
+# Wiimotes: con "wii_real" el jugador trae su Wiimote (puente HID) y la ranura 1 es real; si no, la 1 es el
+# Wiimote emulado con el mando. Las ranuras 2-4 y la Balance Board son siempre reales: cualquier jugador puede
+# vincular su Wiimote o su Balance Board a mitad de partida.
+WII_REAL=$(python3 -c 'import json,os;print(1 if json.loads(os.environ.get("SESSION_OPTIONS") or "{}").get("wii_real") else 0)' 2>/dev/null || echo 0)
+python3 - "$D/Config/WiimoteNew.ini" "$WII_REAL" <<'PY'
+import re, sys
+path, real = sys.argv[1], sys.argv[2] == "1"
+text = open(path).read()
+def source(section, value):
+    global text
+    text = re.sub(r"(\[%s\][^\[]*?)Source = \d" % section, lambda m: m.group(1) + "Source = %d" % value, text, count=1, flags=re.S)
+source("Wiimote1", 2 if real else 1)
+for s in ("Wiimote2", "Wiimote3", "Wiimote4", "BalanceBoard"):
+    source(s, 2)
+open(path, "w").write(text)
+PY
+
 # Las partidas viven en /saves (persistidas por el agente)
 for sub in GC Wii StateSaves; do
   rm -rf "${D:?}/$sub"
