@@ -285,7 +285,7 @@
       if (ch.label === 'control') {
         self.controlCh = ch;
         ch.onmessage = function (e) { self._onControl(e.data); };
-        ch.onopen = function () { self.control({ t: 'keyframe' }); };
+        ch.onopen = function () { self.control({ t: 'keyframe' }); self.control({ t: 'lan-status' }); };
       }
     };
   };
@@ -298,6 +298,7 @@
     else if (m.t === 'bitrate') this.bitrate = m.kbps;
     else if (m.t === 'toast') this.o.onToast({ savestate: 'Estado guardado', loadstate: 'Estado cargado', nextslot: 'Siguiente ranura', screenshot: 'Captura hecha' }[m.text] || m.text);
     else if (m.t === 'bye') this._onSignal({ type: 'bye', reason: m.reason });
+    else if (m.t === 'lan' && this.o.onLan) this.o.onLan(m);
   };
 
   Player.prototype.control = function (m) {

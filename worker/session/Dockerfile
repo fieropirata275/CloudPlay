@@ -4,8 +4,11 @@
 FROM debian:trixie-slim AS hidshim
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev && rm -rf /var/lib/apt/lists/*
 COPY hidshim/hidshim.c /src/hidshim.c
+COPY hidshim/lanpcap.c /src/lanpcap.c
 RUN mkdir -p /out && gcc -O2 -Wall -shared -fPIC -fvisibility=hidden -Wl,-soname,libhidapi-hidraw.so.0 \
-      -o /out/libhidapi-hidraw.so.0 /src/hidshim.c
+      -o /out/libhidapi-hidraw.so.0 /src/hidshim.c \
+ # libpcap propia para PCSX2: el adaptador de red de la PS2 va al cable virtual de la sesión (LOCAL LAN MODE)
+ && gcc -O2 -Wall -shared -fPIC -fvisibility=hidden -Wl,-soname,libpcap.so.0.8 -o /out/libpcap.so.0.8 /src/lanpcap.c
 
 # Debian trixie: es la distribución que aún empaqueta Dolphin (Ubuntu 24.04 lo quitó y el PPA ya no existe)
 FROM debian:trixie-slim
@@ -44,6 +47,7 @@ RUN userdel -r ubuntu 2>/dev/null || true \
  && useradd -m -u 1000 -s /bin/bash player
 
 COPY --from=hidshim /out/libhidapi-hidraw.so.0 /opt/cloudplay/lib/libhidapi-hidraw.so.0
+COPY --from=hidshim /out/libpcap.so.0.8 /opt/pcsx2/usr/lib/libpcap.so.0.8
 COPY cloudplay /opt/cloudplay
 COPY templates /opt/cloudplay/templates
 COPY entrypoint.sh setup-emu.sh gc-menu.sh accessories.py pulse.pa /opt/cloudplay/

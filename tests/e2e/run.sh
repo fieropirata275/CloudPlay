@@ -42,7 +42,10 @@ rm -f "$HERE/pad.log"
 cd "$HERE"
 DISPLAY=:99 python3 fake_agent.py "$NODE" > agent.log 2>&1 & PIDS+=($!)
 sleep 1.5
-if [ "${E2E_DESKTOP:-0}" = 1 ]; then
+if [ "${E2E_LAN:-0}" = 1 ]; then
+  rm -rf lanvid
+  python3 lan.py
+elif [ "${E2E_DESKTOP:-0}" = 1 ]; then
   (cd ../../clients/desktop && CLOUDPLAY_SERVER="http://localhost:$PORT" npm run -s web)
   NODE_PATH="$(npm root -g)" DISPLAY=:99 node desktop.js
 elif [ "${E2E_ACC:-0}" = 1 ]; then

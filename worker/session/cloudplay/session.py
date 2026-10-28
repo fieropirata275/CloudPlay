@@ -32,6 +32,8 @@ ENCODER = E.get("ENCODER", "auto")
 USE_VGL = E.get("USE_VGL", "auto")
 VGL_DISPLAY = E.get("VGL_DISPLAY", "egl")
 HID_DIR = E.get("CLOUDPLAY_HID_DIR", "/tmp/cloudplay-hid")
+LAN_SOCK = E.get("CLOUDPLAY_LAN_SOCK", "/tmp/cloudplay-lan.sock")
+LAN_PLATFORMS = {"ps2", "gc"}  # consolas con adaptador de red: PS2 Network Adapter y GameCube Broadband Adapter
 SHIM_LIB = "/opt/cloudplay/lib"  # libhidapi de CloudPlay (hidshim): Wiimotes reales vía puente
 
 
@@ -98,6 +100,14 @@ class Session:
                 self.xin = XInject(DISPLAY, w, h)
             except (OSError, ValueError) as e:
                 log.warning("sin teclado/ratón del jugador: %s", e)
+
+        # Red local con otras consolas de la nube (código compartido): cable virtual del adaptador de red
+        self.lan = None
+        if PLATFORM in LAN_PLATFORMS:
+            from .lanlink import LanLink, session_mac
+            hub = SIGNAL_URL.replace("/ws/signal/", "/ws/lan/") + f"?token={WORKER_TOKEN}"
+            self.lan = LanLink(LAN_SOCK, hub, lambda m: self.streamer.notify(m),
+                               rewrite_mac=session_mac(SESSION_ID) if PLATFORM == "ps2" else None)
 
         # Wiimotes / Balance Board reales del jugador: solo en Wii (Dolphin los busca por hidapi)
         self.hid = None
@@ -183,6 +193,17 @@ class Session:
                 self.streamer.notify({"t": "toast", "text": t})
         elif t == "quit":
             self.loop.call_soon_threadsafe(self.stopping.set)
+        elif t == "lan" and self.lan:
+            code = msg.get("code")
+            if isinstance(code, str) and 4 <= len(code) <= 12:
+                self.loop.call_soon_threadsafe(self.lan.join, code)
+        elif t == "lan-leave" and self.lan:
+            self.loop.call_soon_threadsafe(self.lan.leave)
+        elif t == "lan-status":
+            # el cliente (re)conectado pregunta: ¿hay red local en esta consola y en qué estado está?
+            st = {"t": "lan", "state": self.lan.state if self.lan else "unsupported", "code": self.lan.code if self.lan else None,
+                  "slot": self.lan.slot if self.lan else 0}
+            self.streamer.notify(st)
         elif t == "key" and self.xin:
             ok = self.xin.key(msg.get("c"), bool(msg.get("d")))
             if ok and not getattr(self, "_keys_seen", False):
@@ -276,6 +297,8 @@ class Session:
                 self.stopping.set()
 
     async def run(self) -> int:
+        if self.lan:
+            await self.lan.start()  # el cable tiene que existir antes de que el emulador lo busque
         self.launch_emulator()
         for sig in (signal.SIGTERM, signal.SIGINT):
             self.loop.add_signal_handler(sig, self.stopping.set)
@@ -294,6 +317,8 @@ class Session:
             t.cancel()
         if self.hid:
             self.hid.unlink_all()
+        if self.lan:
+            await self.lan.close()
         self.streamer.shutdown()
         if self.emu and self.emu.poll() is None:
             self.emu.terminate()  # PCSX2/Dolphin vuelcan memcards al cerrar limpio

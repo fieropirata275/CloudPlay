@@ -111,6 +111,11 @@ class StreamActivity : AppCompatActivity() {
 
     // Animación de mando conectado / desconectado al estilo de la consola (PadFxView.kt)
     private lateinit var padFx: PadFxView
+    private lateinit var uiRoot: FrameLayout
+
+    // LOCAL LAN MODE: estado que manda la sesión (lanlink.py) {state: off|waiting|on, code, slot, members}
+    private var lan = JSONObject().put("state", "off")
+    private val lanAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
     private var platform = "ps2"
     private val inputListener = object : android.hardware.input.InputManager.InputDeviceListener {
         private val known = HashMap<Int, Int>()
@@ -197,6 +202,7 @@ class StreamActivity : AppCompatActivity() {
             root.addView(menuBtn, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.CENTER_HORIZONTAL))
         }
         buildWizardUi(root)
+        uiRoot = root
         padFx = PadFxView(this)
         root.addView(padFx, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         inputListener.seed()
@@ -301,7 +307,10 @@ class StreamActivity : AppCompatActivity() {
                             dc.registerObserver(object : DataChannel.Observer {
                                 override fun onBufferedAmountChange(p: Long) {}
                                 override fun onStateChange() {
-                                    if (dc.state() == DataChannel.State.OPEN) control(JSONObject().put("t", "keyframe"))
+                                    if (dc.state() == DataChannel.State.OPEN) {
+                                        control(JSONObject().put("t", "keyframe"))
+                                        control(JSONObject().put("t", "lan-status"))
+                                    }
                                 }
                                 override fun onMessage(b: DataChannel.Buffer) {
                                     val bytes = ByteArray(b.data.remaining()).also { b.data.get(it) }
@@ -408,7 +417,71 @@ class StreamActivity : AppCompatActivity() {
             "toast" -> toast(mapOf("savestate" to "Estado guardado", "loadstate" to "Estado cargado",
                 "nextslot" to "Siguiente ranura", "screenshot" to "Captura hecha")[m.optString("text")] ?: m.optString("text"))
             "bye" -> onSignal(JSONObject().put("type", "bye").put("reason", m.optString("reason")))
+            "lan" -> main.post { onLan(m) }
         }
+    }
+
+    // ------------------------------------------------------------ LOCAL LAN MODE
+    private fun lanSupported() = platform == "ps2" || platform == "gc"
+    private fun prettyCode(c: String) = if (c.length == 6) c.substring(0, 3) + "-" + c.substring(3) else c
+
+    private fun onLan(m: JSONObject) {
+        val st = m.optString("state")
+        if (st == "unsupported") return
+        val before = lan
+        lan = m
+        m.optString("error").takeIf { it.isNotEmpty() }?.let { toast(it) }
+        val wasOn = before.optString("state") == "on"
+        when {
+            st == "on" && (!wasOn || m.optInt("members") > before.optInt("members")) -> LanFx.on(uiRoot, platform, m.optInt("members", 2))
+            wasOn && st == "waiting" && !m.optBoolean("reconnecting") -> toast("Una consola ha salido de la red local")
+            wasOn && st == "off" -> LanFx.off(uiRoot, platform)
+        }
+    }
+
+    private fun joinLan(code: String) {
+        lan = JSONObject().put("state", "waiting").put("code", code).put("members", 1)
+        control(JSONObject().put("t", "lan").put("code", code))
+    }
+
+    private fun openLan() {
+        menuOpen = true
+        val st = lan.optString("state")
+        val b = AlertDialog.Builder(this).setTitle("Red local (LAN)").setOnDismissListener { menuOpen = false; immersive() }
+        if (st == "on" || st == "waiting") {
+            val code = lan.optString("code")
+            b.setMessage("Código: ${prettyCode(code)}\n\n" + if (st == "on") "LOCAL LAN MODE ON · ${lan.optInt("members")} consolas en la misma red"
+                else "Esperando a la otra consola… pásale el código")
+                .setPositiveButton("Compartir") { _, _ ->
+                    startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                        type = "text/plain"; putExtra(android.content.Intent.EXTRA_TEXT, "Únete a mi red local de CloudPlay con el código ${prettyCode(code)}")
+                    }, "Compartir código"))
+                }
+                .setNegativeButton("Salir de la LAN") { _, _ ->
+                    control(JSONObject().put("t", "lan-leave"))
+                    if (st == "on") LanFx.off(uiRoot, platform)
+                    lan = JSONObject().put("state", "off")
+                }
+                .setNeutralButton("Volver", null)
+        } else {
+            val input = android.widget.EditText(this).apply {
+                hint = "K7Q-2MX"; isSingleLine = true; textSize = 20f; gravity = Gravity.CENTER
+                inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
+            }
+            b.setMessage("Para juegos con multijugador en red local: tu consola y la de tus amigos en la misma LAN. Crea un código o escribe el que te han pasado.")
+                .setView(input)
+                .setPositiveButton("Unirse") { _, _ ->
+                    val c = input.text.toString().uppercase().filter { it.isLetterOrDigit() }
+                    if (c.length == 6 && c.all { it in lanAlphabet }) joinLan(c) else toast("El código son 6 letras y números, como K7Q-2MX")
+                }
+                .setNegativeButton("Crear código") { _, _ ->
+                    val rnd = java.security.SecureRandom()
+                    joinLan((1..6).map { lanAlphabet[rnd.nextInt(lanAlphabet.length)] }.joinToString(""))
+                    main.postDelayed({ openLan() }, 400)
+                }
+                .setNeutralButton("Volver", null)
+        }
+        b.show()
     }
 
     // ------------------------------------------------------------------ input
@@ -565,6 +638,9 @@ class StreamActivity : AppCompatActivity() {
             "Cargar estado" to { control(JSONObject().put("t", "loadstate")) },
             "Siguiente ranura" to { control(JSONObject().put("t", "nextslot")) },
             "Configurar mando" to { main.post { configurePad() } },
+            *(if (lanSupported()) arrayOf<Pair<String, () -> Unit>>(
+                (if (lan.optString("state") == "on") "Red local (LAN) · ON" else "Red local (LAN)") to { main.post { openLan() } }
+            ) else emptyArray()),
             "Calidad: automática" to { manualBitrate = 0 },
             "Calidad: 4 Mbps" to { setManualBitrate(4000) },
             "Calidad: 8 Mbps" to { setManualBitrate(8000) },

@@ -23,3 +23,4 @@ tests/e2e/wii_hid.json
 tests/e2e/wii_hid.png
 tests/e2e/acc_sheet.png
 tests/e2e/desktop_*.png
+tests/e2e/lanvid/

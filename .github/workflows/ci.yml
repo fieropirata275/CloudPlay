@@ -30,6 +30,10 @@ jobs:
         run: python -m pytest -q worker/session/tests/test_hidbridge.py
       - name: libhidapi de CloudPlay compila sin avisos
         run: gcc -O2 -Wall -Wextra -Werror -shared -fPIC -fvisibility=hidden -o /tmp/libhidapi-hidraw.so.0 worker/session/hidshim/hidshim.c
+      - name: libpcap de CloudPlay (adaptador de red de PS2) compila sin avisos
+        run: gcc -O2 -Wall -Wextra -Werror -shared -fPIC -fvisibility=hidden -Wl,-soname,libpcap.so.0.8 -o /tmp/libpcap.so.0.8 worker/session/hidshim/lanpcap.c
+      - name: LOCAL LAN MODE de extremo a extremo (hub + DHCP + ARP + aislamiento de salas)
+        run: python tests/lan/run_lan.py
       - name: Mandos (perfiles, hat y asistente con mandos simulados)
         run: node tests/web/pads.test.js
       - name: El cliente web sigue siendo ES5 (teles antiguas)

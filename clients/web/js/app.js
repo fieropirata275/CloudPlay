@@ -92,6 +92,14 @@
 
   // Mandos: prueba en vivo y asistente (js/padsui.js)
   CP.Extras.init({ openSheet: openSheet, closeSheet: closeSheet, toast: toast });
+  CP.Lan.init({
+    openSheet: openSheet, closeSheet: closeSheet, toast: toast,
+    onClose: function () {
+      CP.navSetActive(false);
+      if (state.player) state.player.pauseInput(false);
+      if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    }
+  });
   CP.PadsUI.init({
     openSheet: openSheet, closeSheet: closeSheet, toast: toast, modal: modal,
     inGame: function () { return !!state.player; }
@@ -550,6 +558,7 @@
         },
         onToast: toast,
         // mando o Wiimote que entra o sale durante la partida: animación con el estilo de la consola
+        onLan: function (m) { CP.Lan.onState(m); },
         onPadEvent: function (e) { if (CP.PadFx) CP.PadFx.show(s.game ? s.game.platform : 'ps2', e); },
         onStats: drawStats,
         onMenu: openMenu,
@@ -579,6 +588,9 @@
     $('#menu-title').textContent = p.session.game ? p.session.game.title : 'Menú';
     var g = p.session.game;
     $('#menu-acc').hidden = !(g && CP.Extras.has(g));
+    // Solo en consolas con adaptador de red (PS2, GameCube)
+    $('#menu-lan').hidden = !(g && CP.Lan.supported(g.platform));
+    $('#menu-lan').textContent = CP.Lan.state().state === 'on' ? 'Red local (LAN) · ON' : 'Red local (LAN)';
     $('#menu-mic').hidden = !p.localStream || !p.localStream.getAudioTracks().length;
     $('#menu-mic').textContent = p.micMuted ? 'Activar el micro' : 'Silenciar el micro';
     $$('#quality .btn').forEach(function (b) { b.classList.toggle('on', parseInt(b.getAttribute('data-kbps'), 10) === state.quality); });
@@ -598,6 +610,10 @@
     var p = state.player;
     if (!a || !p) return;
     if (a === 'resume') return closeMenu();
+    if (a === 'lan') {
+      closeSheet($('#game-menu'));  // el mando sigue en pausa hasta cerrar la hoja de la LAN
+      return CP.Lan.open(p);
+    }
     if (a === 'mic') {
       p.micMuted = !p.micMuted;
       p.setMicMuted(p.micMuted);
@@ -658,6 +674,7 @@
 
   function endPlayer() {
     if (state.player) { state.player.close(); state.player = null; }
+    CP.Lan.reset();
     clearTimeout(scenePauseTimer);
     if (root.gsap) root.gsap.killTweensOf('#boot-shape');
     state.session = null;

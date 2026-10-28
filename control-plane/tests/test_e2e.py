@@ -279,3 +279,96 @@ def test_session_options(client):
         assert start["options"] == opts
         assert client.get(f"/api/sessions/{r.json()['id']}", headers=H).json()["options"] == opts
         client.delete(f"/api/sessions/{r.json()['id']}", headers=H)
+
+
+def _lan_state(ws, want=None, limit=8):
+    import json as _j
+    for _ in range(limit):
+        m = _j.loads(ws.receive_text())
+        if m.get("t") == "lan" and (want is None or m.get("state") == want):
+            return m
+    raise AssertionError(f"no llegó el estado LAN {want}")
+
+
+def test_lan_rooms(client):
+    """Código compartido: dos consolas en la misma sala se ven como en una LAN; la sala se destruye al salir."""
+    import asyncio as _a
+    tok = client.post("/api/auth/login", json={"email": "admin@test.local", "password": "supersecret"}).json()["access_token"]
+    H = {"Authorization": f"Bearer {tok}"}
+    node = client.post("/api/admin/nodes", json={"name": "lan-01", "capacity": 4}, headers=H).json()
+    game = client.post("/api/admin/games", json={"title": "GT", "platform": "ps2", "rom_path": "ps2/gt.iso"}, headers=H).json()
+    with client.websocket_connect(f"/ws/agent?token={node['token']}") as agent:
+        agent.send_json({"type": "hello", "gpu": "nvidia", "capacity": 4, "platforms": ["ps2"], "inventory": [], "sessions": []})
+        time.sleep(0.3)
+        # Sesiones que dejaron a medio cerrar las pruebas anteriores (cuentan para el límite del usuario)
+        import sqlite3
+        with sqlite3.connect("test.db") as db:
+            db.execute("UPDATE sessions SET status = 'ended' WHERE status != 'ended'")
+            db.execute("UPDATE nodes SET status = 'offline' WHERE name != 'lan-01'")  # que todo caiga en este nodo
+        sess = []
+        for _ in range(3):
+            r = client.post("/api/sessions", json={"game_id": game["id"]}, headers=H)
+            assert r.status_code == 201, r.text
+            start = recv_until(agent, "start")
+            sess.append((start["session_id"], start["worker_token"]))
+
+        # Token incorrecto: fuera
+        with pytest.raises(Exception):
+            with client.websocket_connect(f"/ws/lan/{sess[0][0]}?token=nope") as w:
+                w.receive_text()
+
+        a = client.websocket_connect(f"/ws/lan/{sess[0][0]}?token={sess[0][1]}").__enter__()
+        b = client.websocket_connect(f"/ws/lan/{sess[1][0]}?token={sess[1][1]}").__enter__()
+        c = client.websocket_connect(f"/ws/lan/{sess[2][0]}?token={sess[2][1]}").__enter__()
+        a.send_text('{"t": "join", "code": "zz"}')
+        assert _lan_state(a, "off")["error"] == "Código no válido"
+        a.send_text('{"t": "join", "code": "k7q-2mx"}')
+        st = _lan_state(a, "waiting")
+        assert st["code"] == "K7Q2MX" and st["slot"] == 1 and st["members"] == 1
+        b.send_text('{"t": "join", "code": "K7Q 2MX"}')
+        assert _lan_state(b, "on")["slot"] == 2
+        assert _lan_state(a, "on")["members"] == 2
+        c.send_text('{"t": "join", "code": "ABCDEF"}')  # otra sala
+        _lan_state(c, "waiting")
+
+        mac_a, mac_b = bytes.fromhex("020000000001"), bytes.fromhex("020000000002")
+        bcast = b"\xff" * 6 + mac_a + b"\x08\x06" + b"arp-who-has" + bytes(30)
+        a.send_bytes(bcast)
+        assert b.receive_bytes() == bcast  # broadcast: llega al otro de la sala
+        uni = mac_a + mac_b + b"\x08\x00" + b"hola" + bytes(40)
+        b.send_bytes(uni)
+        assert a.receive_bytes() == uni  # unicast a la MAC que aprendió el switch
+        big = bytes(2000)
+        a.send_bytes(big)  # trama demasiado grande: se descarta
+        a.send_bytes(mac_b + mac_a + b"\x08\x00" + bytes(46))
+        assert b.receive_bytes()[:6] == mac_b  # la siguiente sí llega (la grande no)
+
+        # La otra sala no ha visto nada: su primer mensaje sigue siendo de estado
+        c.send_text('{"t": "leave"}')
+        assert _lan_state(c, "off")["state"] == "off"
+
+        b.send_text('{"t": "leave"}')
+        _lan_state(b, "off")
+        assert _lan_state(a, "waiting")["members"] == 1
+        a.close(); b.close(); c.close()
+        time.sleep(0.3)
+        for sid, _t in sess:
+            client.delete(f"/api/sessions/{sid}", headers=H)
+
+
+def test_lan_room_destroyed(client):
+    """Con la última consola fuera no queda nada de la sala en Redis."""
+    import asyncio as _a
+    from app import lan
+    r = fakeredis.FakeAsyncRedis(decode_responses=True)
+
+    async def go():
+        await r.hset("lanroom:ps2:AAAAAA", "x", '{"slot": 1}')
+        await r.hdel("lanroom:ps2:AAAAAA", "x")
+        return await r.exists("lanroom:ps2:AAAAAA")
+
+    assert _a.run(go()) == 0
+    assert lan.normalize_code("k7q-2mx") == "K7Q2MX"
+    assert lan.normalize_code("K0Q2MX") is None  # 0 no está en el alfabeto
+    assert lan.normalize_code(None) is None
+    assert not lan.ROOMS, "las salas de la réplica se destruyen cuando no queda nadie"

@@ -15,6 +15,7 @@ from .reaper import reaper_loop
 from .routes import admin, auth, catalog, leads, nodes, sessions
 from .turn import turn_loop
 from .security import hash_password
+from .lan import router as lan_router
 from .ws import router as ws_router
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -66,7 +67,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-for r in (auth.router, catalog.router, sessions.router, admin.router, leads.router, nodes.router, ws_router):
+for r in (auth.router, catalog.router, sessions.router, admin.router, leads.router, nodes.router, ws_router, lan_router):
     app.include_router(r)
 
 

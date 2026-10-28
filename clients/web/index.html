@@ -181,6 +181,7 @@
         </div>
         <button class="btn" data-action="pads">Configurar mando</button>
         <button class="btn" data-action="accessories" id="menu-acc" hidden>Accesorios</button>
+        <button class="btn" data-action="lan" id="menu-lan" hidden>Red local (LAN)</button>
         <button class="btn" data-action="mic" id="menu-mic" hidden>Silenciar el micro</button>
         <button class="btn" data-action="stats">Ver datos de conexión</button>
         <button class="btn" data-action="detach">Salir y seguir en otra pantalla</button>
@@ -195,6 +196,33 @@
       <h2 id="modal-title"></h2>
       <p id="modal-text" class="muted"></p>
       <div id="modal-actions" class="stack"></div>
+    </div>
+  </div>
+  <!-- LOCAL LAN MODE (js/lan.js) -->
+  <div id="lan-sheet" class="sheet modal" hidden>
+    <div class="sheet-card lan-card" role="dialog" aria-labelledby="lan-title">
+      <h2 id="lan-title">Red local (LAN)</h2>
+      <p class="muted">Para los juegos con multijugador en red local: tu consola y la de tus amigos en la misma LAN, aunque cada uno juegue desde su casa.</p>
+      <div id="lan-join">
+        <button class="btn primary" id="lan-create" data-autofocus>Crear un código</button>
+        <p class="sheet-label">¿Te han pasado un código?</p>
+        <div class="lan-input-row">
+          <input id="lan-input" class="code-input" placeholder="K7Q-2MX" maxlength="7" autocomplete="off" autocapitalize="characters" aria-label="Código de la red">
+          <button class="btn" id="lan-go">Unirse</button>
+        </div>
+      </div>
+      <div id="lan-room" class="lan-room" hidden>
+        <p class="sheet-label">Código de la red</p>
+        <p class="lan-code" id="lan-code"></p>
+        <p class="lan-status" id="lan-status" aria-live="polite"></p>
+        <p class="hint" id="lan-ip"></p>
+        <div class="grid2">
+          <button class="btn" id="lan-copy">Compartir código</button>
+          <button class="btn danger" id="lan-leave">Salir de la LAN</button>
+        </div>
+      </div>
+      <p class="hint">Conecta primero y luego entra en el modo LAN del juego. Hasta 8 consolas del mismo tipo.</p>
+      <button class="btn quiet" id="lan-close">Volver al juego</button>
     </div>
   </div>
   <!-- Accesorios de la partida (js/extras.js) -->
@@ -283,6 +311,7 @@
   <script src="js/padfx.js"></script>
   <script src="js/padsui.js"></script>
   <script src="js/extras.js"></script>
+  <script src="js/lan.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

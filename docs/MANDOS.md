@@ -74,3 +74,16 @@ En partida, **Menú → Silenciar el micro** lo corta sin salir.
   dentro de la consola, todavía no.
 - Wiimote real en Android y en las teles: sus navegadores no tienen WebHID.
 - La app de escritorio de macOS no está firmada: la primera vez, clic derecho → Abrir.
+
+## LOCAL LAN MODE (PS2 y GameCube)
+
+Solo sale en el menú de la partida de las consolas que tenían adaptador de red (PS2 Network Adapter, GameCube
+Broadband Adapter); la Wii no lo tiene porque su red en Dolphin no es Ethernet.
+
+1. Un jugador abre **Red local (LAN)** → **Crear código** y lo comparte (`K7Q-2MX`).
+2. El otro abre lo mismo, escribe el código y **Unirse**. Con dos consolas sale la animación **LOCAL LAN MODE ON**.
+3. Ahora sí, en el juego: modo LAN / red local. La consola coge IP por DHCP (`10.77.0.11`, `.12`…); si el juego pide
+   IP fija, usa esa.
+4. **Salir de la LAN** desenchufa el cable. Cuando sale la última consola la sala desaparece del servidor.
+
+Únete a la sala *antes* de entrar al modo LAN del juego: muchos juegos solo buscan la red al entrar en ese menú.

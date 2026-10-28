@@ -41,6 +41,9 @@ clientes ──WebRTC (H.264/Opus + input)──▶ nodos GPU (un contenedor por
   - Transiciones entre pantallas, barra superior que se condensa con el scroll (con barra de progreso de Motion `scroll`), carátulas que aparecen con `inView`, inclinación con reflejo al pasar el ratón.
   - Código de la tele tipo split-flap, palabra que rota en el login, menú y panel con entrada en cascada, pista de arranque que se llena por pasos.
   - Efectos inspirados en Skiper UI portados a JS sin React: texto que rueda, desenfoque progresivo y palabra rotatoria.
+- **LOCAL LAN MODE** (PS2 y GameCube): los jugadores comparten un código desde el menú de la partida y sus consolas
+  de la nube quedan en la misma red local (switch virtual efímero en el orquestador, DHCP 10.77.0.x), para los juegos
+  con multijugador por LAN. Animación de las consolas conectándose y "LOCAL LAN MODE ON". Ver `docs/PROTOCOL.md` §3e.
 - **Web comercial** (`landing/`) con solicitudes de demo que llegan al panel del NOC.
 
 > ⚖️ Solo ROMs y BIOS volcadas de juegos y consolas que poseas. Ofrecer juegos comerciales a

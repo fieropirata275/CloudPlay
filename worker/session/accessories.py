@@ -96,6 +96,28 @@ class Ini:
             f.write("\n".join(self.lines) + "\n")
 
 
+LAN_SOCK = os.environ.get("CLOUDPLAY_LAN_SOCK", "/tmp/cloudplay-lan.sock")
+
+
+def network(session_id: str, pcsx2_ini: str, dolphin_ini: str) -> None:
+    """Adaptador de red siempre puesto (PS2 Network Adapter / GameCube BBA), enchufado al cable virtual de la
+    sesión (lanlink.py). Sin sala LAN es como tenerlo desenchufado; con código, LOCAL LAN MODE."""
+    ps2 = Ini(pcsx2_ini)
+    ps2.set("DEV9/Eth", "EthEnable", "true")
+    ps2.set("DEV9/Eth", "EthApi", "PCAP Switched")  # la libpcap de CloudPlay (hidshim/lanpcap.c)
+    ps2.set("DEV9/Eth", "EthDevice", "lo")          # interfaz que existe siempre; la MAC única la pone lanlink.py
+    ps2.set("DEV9/Eth", "InterceptDHCP", "false")   # el DHCP lo da lanlink.py con la IP del hueco en la sala
+    ps2.set("DEV9/Hdd", "HddEnable", "false")
+    ps2.save()
+    gc = Ini(dolphin_ini)
+    gc.set("Core", "SerialPort1", 11)  # EXIDeviceType::EthernetTapServer
+    gc.set("Core", "BBA_TAPSERVER_DESTINATION", LAN_SOCK)
+    import hashlib
+    h = hashlib.sha256(session_id.encode()).digest()
+    gc.set("Core", "BBA_MAC", "00:09:bf:" + ":".join(f"{b:02x}" for b in h[:3]))  # OUI de Nintendo, única por sesión
+    gc.save()
+
+
 def apply(options: dict, pcsx2_ini: str, dolphin_ini: str, dolphin_cfg: str) -> list[str]:
     acc = [a for a in (options.get("accessories") or []) if isinstance(a, str)]
     done = []
@@ -149,5 +171,6 @@ if __name__ == "__main__":
         opts = {}
     if not isinstance(opts, dict):
         opts = {}
+    network(os.environ.get("SESSION_ID", "local"), sys.argv[1], sys.argv[2])
     for line in apply(opts, *sys.argv[1:4]):
         print("accesorio:", line)

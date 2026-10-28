@@ -135,6 +135,34 @@ Cada 2 s con `getStats()` del `inbound-rtp` de vídeo:
 - pérdida < 0,5 % y se está usando > 60 % del objetivo → +500 kbps
 - límites 2..20 Mbps; el usuario puede fijar una calidad manual desde el menú.
 
+## 3e. LOCAL LAN MODE (red local entre consolas de la nube, solo PS2 y GameCube)
+
+Mensajes por el canal `control`:
+
+| Mensaje | Dirección | Cuerpo |
+|---|---|---|
+| `lan` | cliente → sesión | `{t:"lan", code:"K7Q2MX"}` entra en la sala (crea o se une) |
+| `lan-leave` | cliente → sesión | sale de la sala (el cable queda "desenchufado") |
+| `lan-status` | cliente → sesión | pide el estado (se manda al abrir el canal) |
+| `lan` | sesión → cliente | `{t:"lan", state:"off"\|"waiting"\|"on"\|"unsupported", code, slot, members, error?, reconnecting?}` |
+
+`state:"on"` = 2 o más consolas en la sala: el cliente enseña la animación **LOCAL LAN MODE ON**.
+
+- **Código**: 6 caracteres de `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (sin O/0 ni I/1); se aceptan guiones (`K7Q-2MX`).
+  La sala es `plataforma:código`, máx. 8 consolas, y se destruye con la última que sale.
+- **Emulador ↔ sesión**: socket unix de flujo `/tmp/cloudplay-lan.sock`, cada trama Ethernet precedida de su
+  longitud (2 bytes little endian; protocolo "tapserver" de Dolphin).
+  - GameCube: Broadband Adapter en modo tapserver (`[Core] SerialPort1 = 11`, MAC `00:09:bf:xx:xx:xx` por sesión).
+  - PS2: DEV9 en modo `PCAP Switched` sobre la libpcap de CloudPlay (`hidshim/lanpcap.c`); la MAC se reescribe por
+    sesión en Ethernet y ARP.
+- **DHCP**: lo contesta la sesión solo cuando la consola está en una sala: `10.77.0.(10+hueco)/24`, puerta de enlace y
+  DNS `10.77.0.1` (no hay salida a Internet: es una LAN cerrada).
+- **Sesión ↔ hub**: WebSocket `/ws/lan/{session_id}?token=<token de worker>`; binario = trama Ethernet (14..1518 bytes,
+  máx. 3000/s por consola), texto = `{t:"join", code}` · `{t:"leave"}` → `{t:"lan", state, code, slot, members, error?}`.
+  Switch con aprendizaje de MAC; entre réplicas de la API por Redis (`lanroom:*`, canal `lan:*`). 10 códigos malos
+  por conexión y se corta.
+- Wii no está: su red en Dolphin es emulada a nivel de sockets (sin Ethernet), así que no hay LAN que puentear.
+
 ## 4. Agente ↔ control plane (WebSocket `/ws/agent?token=<node_id>.<secret>`)
 
 | Mensaje | Dirección | Cuerpo |
