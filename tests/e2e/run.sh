@@ -40,9 +40,14 @@ NODE=$(curl -s -X POST "localhost:$PORT/api/admin/nodes" -H "authorization: Bear
 
 rm -f "$HERE/pad.log"
 cd "$HERE"
+if [ "${E2E_BOOT:-0}" = 1 ]; then export BOOTSPLASH_DIR="$HERE/../../worker/session/bootsplash" BOOTSPLASH_LEAD=2.5; fi
 DISPLAY=:99 python3 fake_agent.py "$NODE" > agent.log 2>&1 & PIDS+=($!)
 sleep 1.5
-if [ "${E2E_LAN:-0}" = 1 ]; then
+if [ "${E2E_BOOT:-0}" = 1 ]; then
+  rm -rf bootvid
+  python3 bootsplash.py
+  grep -h "animación\|lanzando" session.log || true
+elif [ "${E2E_LAN:-0}" = 1 ]; then
   rm -rf lanvid
   python3 lan.py
 elif [ "${E2E_DESKTOP:-0}" = 1 ]; then

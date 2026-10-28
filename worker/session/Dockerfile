@@ -51,6 +51,8 @@ COPY --from=hidshim /out/libpcap.so.0.8 /opt/pcsx2/usr/lib/libpcap.so.0.8
 COPY cloudplay /opt/cloudplay
 COPY templates /opt/cloudplay/templates
 COPY entrypoint.sh setup-emu.sh gc-menu.sh accessories.py pulse.pa /opt/cloudplay/
+# Animación de arranque "de firmware" de cada consola (la renderiza bootsplash/studio)
+COPY bootsplash/*.webm /opt/cloudplay/bootsplash/
 RUN chmod +x /opt/cloudplay/*.sh
 
 # Comprobación rápida de que los plugins críticos están

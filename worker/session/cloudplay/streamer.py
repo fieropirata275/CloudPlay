@@ -94,6 +94,7 @@ class Streamer:
         ice_port_range: tuple[int, int] | None = None,
         pulse_source: str = "cloudplay.monitor",
         on_hid: Callable[[bytes], None] | None = None,
+        on_connected: Callable[[], None] | None = None,
         mic: bool = False,
         camera: bool = False,
         mic_sink: str = "pulsesink device=cloudplay_mic sync=false",
@@ -101,6 +102,7 @@ class Streamer:
     ):
         self.display, self.send, self.on_input, self.on_control = display, send, on_input, on_control
         self.on_hid = on_hid
+        self.on_connected = on_connected
         self.hid_ch = None
         # Subida del jugador: su micro y su cámara (EyeToy) llegan por WebRTC y acaban en un micro y una cámara
         # virtuales del contenedor, que los emuladores usan como si estuvieran enchufados
@@ -318,7 +320,11 @@ class Streamer:
         self.send({"type": "ice", "sdpMLineIndex": mline, "candidate": candidate})
 
     def _on_ice_state(self, el, _pspec) -> None:
-        log.info("ICE: %s", el.get_property("ice-connection-state").value_nick)
+        state = el.get_property("ice-connection-state")
+        log.info("ICE: %s", state.value_nick)
+        if self.on_connected and state in (GstWebRTC.WebRTCICEConnectionState.CONNECTED,
+                                           GstWebRTC.WebRTCICEConnectionState.COMPLETED):
+            self.on_connected()
 
     def _on_error(self, _bus, msg) -> None:
         err, dbg = msg.parse_error()

@@ -1,0 +1,7 @@
+{
+  "name": "cloudplay-bootsplash-studio",
+  "private": true,
+  "description": "Renderiza la animación de arranque de cada consola (bootsplash/*.webm)",
+  "scripts": { "render": "node render.mjs" },
+  "dependencies": { "three": "0.169.0" }
+}

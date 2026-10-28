@@ -3,6 +3,8 @@ import json, os, sys
 import os as _os
 HERE = _os.path.dirname(_os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "..", "worker", "session"))
+os.environ.setdefault("BOOTSPLASH_AUDIO", "fakesink sync=true")  # sin PulseAudio en la prueba
+os.environ.setdefault("BOOTSPLASH_DIR", "/nonexistent")  # sin animación salvo E2E_BOOT=1
 import cloudplay.session as sess
 import cloudplay.streamer as S
 

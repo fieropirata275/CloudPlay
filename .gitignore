@@ -24,3 +24,7 @@ tests/e2e/wii_hid.png
 tests/e2e/acc_sheet.png
 tests/e2e/desktop_*.png
 tests/e2e/lanvid/
+tests/e2e/bootvid/
+worker/session/bootsplash/studio/node_modules/
+worker/session/bootsplash/studio/.frames-*/
+worker/session/bootsplash/studio/stills-*.png

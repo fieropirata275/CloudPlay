@@ -41,6 +41,11 @@ clientes ──WebRTC (H.264/Opus + input)──▶ nodos GPU (un contenedor por
   - Transiciones entre pantallas, barra superior que se condensa con el scroll (con barra de progreso de Motion `scroll`), carátulas que aparecen con `inView`, inclinación con reflejo al pasar el ratón.
   - Código de la tele tipo split-flap, palabra que rota en el login, menú y panel con entrada en cascada, pista de arranque que se llena por pasos.
   - Efectos inspirados en Skiper UI portados a JS sin React: texto que rueda, desenfoque progresivo y palabra rotatoria.
+- **Arranque "de firmware"**: al encender cualquier consola sale primero la animación de CloudPlay por la propia
+  señal de vídeo de la consola (como un firmware custom): el logo de metal tintado del color de cada consola gira, se
+  deshace en partículas que dibujan la silueta de la consola y da paso al arranque de verdad (BIOS / juego), con su
+  sonido. Se pinta en el display de la sesión, así que se ve igual en web, tele, Android y escritorio; cualquier botón
+  la salta. Ver `worker/session/bootsplash/README.md`.
 - **LOCAL LAN MODE** (PS2 y GameCube): los jugadores comparten un código desde el menú de la partida y sus consolas
   de la nube quedan en la misma red local (switch virtual efímero en el orquestador, DHCP 10.77.0.x), para los juegos
   con multijugador por LAN. Animación de las consolas conectándose y "LOCAL LAN MODE ON". Ver `docs/PROTOCOL.md` §3e.

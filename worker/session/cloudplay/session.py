@@ -33,6 +33,12 @@ USE_VGL = E.get("USE_VGL", "auto")
 VGL_DISPLAY = E.get("VGL_DISPLAY", "egl")
 HID_DIR = E.get("CLOUDPLAY_HID_DIR", "/tmp/cloudplay-hid")
 LAN_SOCK = E.get("CLOUDPLAY_LAN_SOCK", "/tmp/cloudplay-lan.sock")
+# Animación de arranque "de firmware" (bootsplash.py): por la señal de vídeo de la consola al conectar el jugador
+BOOTSPLASH = E.get("BOOTSPLASH", "1") != "0"
+BOOTSPLASH_DIR = E.get("BOOTSPLASH_DIR", "/opt/cloudplay/bootsplash")
+BOOTSPLASH_LEAD = float(E.get("BOOTSPLASH_LEAD", "3.0"))      # segundos de animación antes de encender la consola
+BOOTSPLASH_WAIT = float(E.get("BOOTSPLASH_WAIT", "25"))       # si nadie se conecta en este tiempo, se enciende sin más
+BOOTSPLASH_AUDIO = E.get("BOOTSPLASH_AUDIO", "pulsesink sync=true")
 LAN_PLATFORMS = {"ps2", "gc"}  # consolas con adaptador de red: PS2 Network Adapter y GameCube Broadband Adapter
 SHIM_LIB = "/opt/cloudplay/lib"  # libhidapi de CloudPlay (hidshim): Wiimotes reales vía puente
 
@@ -87,6 +93,8 @@ class Session:
         self.stopping = asyncio.Event()
         self.exit_code = 0
         self._restart_handle: asyncio.TimerHandle | None = None
+        self.viewer = asyncio.Event()  # el primer cliente ya recibe vídeo (ICE conectado)
+        self.splash = None
 
         from .streamer import Streamer  # importa GStreamer tras bajar privilegios
 
@@ -120,6 +128,7 @@ class Session:
             send=self.send_threadsafe,
             on_input=self.on_input,
             on_control=self.on_control,
+            on_connected=lambda: self.loop.call_soon_threadsafe(self.viewer.set),
             ice_servers=json.loads(E.get("ICE_SERVERS", "[]")),
             encoder=ENCODER,
             fps=int(E.get("FPS", "60")),
@@ -135,6 +144,8 @@ class Session:
 
     # ------------------------------------------------------------ emulator
     def launch_emulator(self) -> None:
+        if self.emu is not None or self.stopping.is_set():
+            return
         use_vgl = USE_VGL == "1" or (USE_VGL == "auto" and self.streamer.encoder_name != "x264")
         cmd = command(PLATFORM, ROM, use_vgl, VGL_DISPLAY)
         env = dict(os.environ, DISPLAY=DISPLAY, SDL_JOYSTICK_DISABLE_UDEV="1", QT_QPA_PLATFORM="xcb")
@@ -144,6 +155,30 @@ class Session:
             env["CLOUDPLAY_HID_DIR"] = HID_DIR
         log.info("lanzando: %s", " ".join(cmd))
         self.emu = subprocess.Popen(cmd, env=env, cwd=os.path.expanduser("~"))
+
+    async def power_on(self) -> None:
+        """Encendido de la consola: animación de arranque por su señal de vídeo y la consola debajo"""
+        try:
+            from .bootsplash import BootSplash
+            splash = BootSplash(DISPLAY, os.path.join(BOOTSPLASH_DIR, f"{PLATFORM}.webm"), BOOTSPLASH_LEAD, BOOTSPLASH_AUDIO)
+            ok = BOOTSPLASH and splash.available()
+        except Exception as e:  # noqa: BLE001 - sin animación, pero la consola se enciende
+            log.warning("animación de arranque no disponible: %s", e)
+            ok = False
+        if not ok:
+            self.launch_emulator()
+            return
+        try:
+            await asyncio.wait_for(self.viewer.wait(), BOOTSPLASH_WAIT)
+        except asyncio.TimeoutError:
+            log.info("nadie mirando: la consola se enciende sin animación")
+            self.launch_emulator()
+            return
+        await asyncio.sleep(0.4)  # que el cliente pinte el primer fotograma antes de empezar
+        if self.stopping.is_set():
+            return
+        self.splash = splash
+        splash.play(lambda: self.loop.call_soon_threadsafe(self.launch_emulator))
 
     async def watch_emulator(self) -> None:
         while not self.stopping.is_set():
@@ -175,6 +210,8 @@ class Session:
             return
         idx, ev = res
         if ev[0] == "pad":
+            if self.splash is not None and self.splash.running and ev[1]:
+                self.splash.skip()  # cualquier botón salta la animación de arranque
             self.pads[idx].update(*ev[1:])
         elif ev[0] == "mouse":
             if self.xin:
@@ -299,7 +336,7 @@ class Session:
     async def run(self) -> int:
         if self.lan:
             await self.lan.start()  # el cable tiene que existir antes de que el emulador lo busque
-        self.launch_emulator()
+        power = asyncio.create_task(self.power_on())
         for sig in (signal.SIGTERM, signal.SIGINT):
             self.loop.add_signal_handler(sig, self.stopping.set)
         tasks = [asyncio.create_task(c) for c in (self.signaling(), self.watch_emulator(), self.idle_watchdog())]
@@ -315,6 +352,9 @@ class Session:
         await self.stopping.wait()
         for t in tasks:
             t.cancel()
+        power.cancel()
+        if self.splash is not None:
+            self.splash.skip()
         if self.hid:
             self.hid.unlink_all()
         if self.lan:

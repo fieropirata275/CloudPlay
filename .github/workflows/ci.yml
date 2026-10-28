@@ -32,6 +32,12 @@ jobs:
         run: gcc -O2 -Wall -Wextra -Werror -shared -fPIC -fvisibility=hidden -o /tmp/libhidapi-hidraw.so.0 worker/session/hidshim/hidshim.c
       - name: libpcap de CloudPlay (adaptador de red de PS2) compila sin avisos
         run: gcc -O2 -Wall -Wextra -Werror -shared -fPIC -fvisibility=hidden -Wl,-soname,libpcap.so.0.8 -o /tmp/libpcap.so.0.8 worker/session/hidshim/lanpcap.c
+      - name: Animación de arranque de las consolas (Xvfb + GStreamer de verdad)
+        run: |
+          sudo apt-get install -y -qq xvfb gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+            gstreamer1.0-x gir1.2-gstreamer-1.0 gir1.2-gst-plugins-base-1.0 python3-gi >/dev/null
+          /usr/bin/python3 worker/session/tests/test_bootsplash.py | tee /tmp/boot.log
+          grep -q BOOTSPLASH_OK /tmp/boot.log
       - name: LOCAL LAN MODE de extremo a extremo (hub + DHCP + ARP + aislamiento de salas)
         run: python tests/lan/run_lan.py
       - name: Mandos (perfiles, hat y asistente con mandos simulados)
