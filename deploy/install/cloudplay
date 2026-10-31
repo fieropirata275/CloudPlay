@@ -282,6 +282,10 @@ case "${1:-help}" in
   cloudflare) shift; need_root; is_orch || die "Va en el máster (orquestador)"; exec bash "$DEST/deploy/install/cloudflare.sh" "$@" ;;
   mail) shift; need_root; is_orch || die "Va en el máster (orquestador)"; exec bash "$DEST/deploy/install/mail.sh" "$@" ;;
   turn-cloudflare) shift; cmd_turn_cloudflare "$@" ;;
+  rescan)
+    need_root; is_node || die "Va en un nodo gaming (donde están los juegos y las BIOS)"
+    # El agente vuelve a leer la librería y las BIOS; sus partidas en curso siguen (las adopta al volver)
+    dw restart agent >/dev/null && ok "Librería y BIOS releídas: en unos segundos se ven en el catálogo" ;;
   drain) shift; cmd_drain "$@" ;;
   resume) cmd_resume ;;
   stop-sessions) cmd_stop_sessions ;;
@@ -302,6 +306,7 @@ cloudplay — operar CloudPlay en esta máquina
   mail setup|status|test|off  correo: Resend (dominio y DNS automáticos) o SMTP
   tunnel TOKEN           publicar con un túnel de Cloudflare ya creado a mano
   turn-cloudflare ID TK  vídeo por el TURN de Cloudflare (sin abrir puertos UDP)
+  rescan                 nodo: releer juegos y BIOS tras copiarlos (sin cortar partidas)
   drain [--wait]         nodo: dejar de aceptar partidas (mantenimiento)
   resume                 nodo: volver a aceptar partidas
   stop-sessions          nodo: cerrar y guardar todas las partidas (SAI con batería baja)

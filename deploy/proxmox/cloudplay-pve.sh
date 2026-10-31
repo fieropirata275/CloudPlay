@@ -472,7 +472,8 @@ cmd_cluster() {
       echo "Nodos:          VM ${NEW_NODE_IDS:-ninguno}"
       echo "Token de unión: $JOIN_TOKEN"
       echo
-      echo "Juegos y BIOS:  en el máster, /srv/cloudplay/library/{ps2,gc,wii} y /srv/cloudplay/bios"
+      echo "Juegos y BIOS:  en CADA nodo gaming: /srv/cloudplay/library/{ps2,gc,wii} y /srv/cloudplay/bios/{ps2,gc,wii}"
+      echo "                (después, en el nodo: sudo cloudplay rescan)"
       echo "Más nodos:      curl -fsSL https://github.com/$RELEASE_REPO/releases/latest/download/get.sh | bash -s -- proxmox cluster-add 2"
     } > "$CLUSTER_TXT"
   )
