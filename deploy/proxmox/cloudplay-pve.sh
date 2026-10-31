@@ -276,6 +276,9 @@ packages: [curl, qemu-guest-agent]
 ssh_pwauth: true
 runcmd:
   - systemctl enable --now qemu-guest-agent
+  # La imagen de Ubuntu cierra SSH por contraseña en 60-cloudimg-settings.conf: este va antes y gana
+  - printf 'PasswordAuthentication yes\nKbdInteractiveAuthentication yes\n' > /etc/ssh/sshd_config.d/01-cloudplay.conf
+  - systemctl reload ssh || systemctl reload sshd || true
   - curl -fsSL https://github.com/$RELEASE_REPO/releases/download/$RELEASE_VERSION/get.sh -o /root/cloudplay-get.sh
   - CLOUDPLAY_VERSION=$RELEASE_VERSION bash /root/cloudplay-get.sh $2 > /var/log/cloudplay-firstboot.log 2>&1
 EOF

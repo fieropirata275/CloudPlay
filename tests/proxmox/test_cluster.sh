@@ -114,6 +114,7 @@ for id in 200 201 202 203; do [ -f "$STATE/started.$id" ] || fail "la VM $id no 
 M="$T/vz/snippets/cloudplay-cluster-master.yaml" N="$T/vz/snippets/cloudplay-cluster-node.yaml"
 [ "$(stat -c %a "$M")" = 600 ] || fail "el cloud-init del máster debería ser solo de root"
 grep -q "releases/download/v9.9.9/get.sh" "$M" || fail "el máster no instala la versión del despliegue"
+grep -q "01-cloudplay.conf" "$M" && grep -q "01-cloudplay.conf" "$N" || fail "SSH por contraseña"
 grep -q "get.sh orchestrator --join-token [0-9a-f]\{48\} --admin-email admin@cloudplay.lan --admin-password " "$M" || fail "argumentos del máster: $(cat "$M")"
 grep -q -- "--lan-ip\|--domain" "$M" && fail "con DHCP el máster no lleva IP ni dominio (modo red local automático)"
 tok=$(sed -n 's/.*--join-token \([0-9a-f]*\).*/\1/p' "$M")
