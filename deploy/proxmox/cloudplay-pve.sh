@@ -21,7 +21,7 @@ RELEASE_VERSION="${CLOUDPLAY_VERSION:-$(cat "$HERE/VERSION" 2>/dev/null || echo 
 [ "$RELEASE_VERSION" != latest ] || RELEASE_VERSION=$(curl -fsSLI -o /dev/null -w '%{url_effective}' \
   "https://github.com/${CLOUDPLAY_REPO:-fieropirata275/CloudPlay}/releases/latest" 2>/dev/null | sed 's#.*/##') || true
 RELEASE_REPO="${CLOUDPLAY_REPO:-fieropirata275/CloudPlay}"
-NODES=1 MASTER_IP="" GATEWAY="" DNS="" MASTER_CORES=4 MASTER_MEMORY=8192 MASTER_DISK=48 DOMAIN="" TUNNEL_TOKEN="" YES=0
+VM_PASSWORD="" NODES=1 MASTER_IP="" GATEWAY="" DNS="" MASTER_CORES=4 MASTER_MEMORY=8192 MASTER_DISK=48 DOMAIN="" TUNNEL_TOKEN="" YES=0
 SNIPPETS_SET=0 STORAGE_SET=0 BRIDGE_SET=0 GPU_SET=0 CORES_SET=0 MEMORY_SET=0 IMG="" MASTER_URL="" MASTER_ADDR="" MASTER_VMID="" NEW_NODE_IDS=""
 CLUSTER_ENV="${CLOUDPLAY_CLUSTER_ENV:-/root/cloudplay-cluster.env}" CLUSTER_TXT="${CLOUDPLAY_CLUSTER_TXT:-/root/cloudplay-cluster.txt}"
 SYSFS="${CLOUDPLAY_SYSFS:-/sys}" PVE_QEMU_CONF="${CLOUDPLAY_PVE_QEMU_CONF:-/etc/pve/qemu-server}"
@@ -39,7 +39,7 @@ usage() { sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; cat <<'EOF'
 Opciones: --storage local-lvm --snippets local --bridge vmbr0 --template 9100 --vmid N
           --cores 8 --memory 16384 --disk 64 --prefix cloudplay-node --gpu auto|nvidia|vaapi|cpu
           --capacity auto|N --ssh-key ~/.ssh/id_ed25519.pub
-Clúster:  --nodes N --master-ip IP/MÁSCARA --gateway IP --dns IP --master-cores 4 --master-memory 8192
+Clúster:  --nodes N --vm-password CLAVE (usuario «cloudplay» de las VMs; si no, se genera) --master-ip IP/MÁSCARA --gateway IP --dns IP --master-cores 4 --master-memory 8192
           --master-disk 48 --gpu-pci auto|none|lista --domain D --tunnel-token T --admin-email E --yes
           Sin --domain la plataforma va por la IP del máster (http://IP y https://IP).
           --cores/--memory/--disk son los de cada nodo.
@@ -55,6 +55,7 @@ while [ $# -gt 0 ]; do
     --snippets) SNIPPETS="$2"; SNIPPETS_SET=1; shift ;;
     --bridge) BRIDGE="$2"; BRIDGE_SET=1; shift ;;
     --nodes) NODES="$2"; shift ;;
+    --vm-password) VM_PASSWORD="$2"; shift ;;
     --master-ip) MASTER_IP="$2"; shift ;;
     --gateway) GATEWAY="$2"; shift ;;
     --dns) DNS="$2"; shift ;;
@@ -272,6 +273,7 @@ write_snippet() {  # fichero, argumentos de get.sh
 #cloud-config
 package_update: true
 packages: [curl, qemu-guest-agent]
+ssh_pwauth: true
 runcmd:
   - systemctl enable --now qemu-guest-agent
   - curl -fsSL https://github.com/$RELEASE_REPO/releases/download/$RELEASE_VERSION/get.sh -o /root/cloudplay-get.sh
@@ -291,6 +293,8 @@ create_vm() {  # id nombre núcleos memoria disco snippet ipconfig [gpu] [orden 
   qm set "$id" --ide2 "$STORAGE:cloudinit" --boot order=scsi0 --ipconfig0 "$7" --ciuser cloudplay \
     --cicustom "vendor=$SNIPPETS:snippets/$6" >/dev/null
   if [ -n "$SSH_KEY" ]; then qm set "$id" --sshkeys "$SSH_KEY" >/dev/null; fi
+  # Usuario «cloudplay» con contraseña para la consola de Proxmox (y SSH); se pone antes del primer arranque
+  if [ -n "$VM_PASSWORD" ]; then qm set "$id" --cipassword "$VM_PASSWORD" >/dev/null; fi
   if [ -n "${8:-}" ]; then qm set "$id" --hostpci0 "$8,pcie=1" >/dev/null; fi
 }
 
@@ -336,7 +340,7 @@ save_cluster() {
   ( umask 077
     {
       printf 'MASTER_VMID=%q\nMASTER_URL=%q\nMASTER_ADDR=%q\nJOIN_TOKEN=%q\n' "$MASTER_VMID" "$MASTER_URL" "$MASTER_ADDR" "$JOIN_TOKEN"
-      printf 'ADMIN_EMAIL=%q\nADMIN_PASSWORD=%q\nRELEASE_VERSION=%q\n' "$ADMIN_EMAIL" "$ADMIN_PASSWORD" "$RELEASE_VERSION"
+      printf 'ADMIN_EMAIL=%q\nADMIN_PASSWORD=%q\nRELEASE_VERSION=%q\nVM_PASSWORD=%q\n' "$ADMIN_EMAIL" "$ADMIN_PASSWORD" "$RELEASE_VERSION" "$VM_PASSWORD"
       printf 'STORAGE=%q\nBRIDGE=%q\nCORES=%q\nMEMORY=%q\nDISK=%q\nPREFIX=%q\n' "$STORAGE" "$BRIDGE" "$CORES" "$MEMORY" "$DISK" "$PREFIX"
     } > "$CLUSTER_ENV"
   )
@@ -411,6 +415,7 @@ cmd_cluster() {
   IMG=$(ubuntu_image)
   JOIN_TOKEN="${JOIN_TOKEN:-$(openssl rand -hex 24)}"
   ADMIN_PASSWORD="${ADMIN_PASSWORD:-$(openssl rand -base64 24 | tr -d '/+=\n' | cut -c1-18)}"
+  VM_PASSWORD="${VM_PASSWORD:-$(openssl rand -base64 24 | tr -d '/+=\n' | cut -c1-14)}"
   if [ -n "$DOMAIN" ]; then ADMIN_EMAIL="${ADMIN_EMAIL:-admin@${DOMAIN#*.}}"; else ADMIN_EMAIL="${ADMIN_EMAIL:-admin@cloudplay.lan}"; fi
 
   # ---------------------------------------------------------------- máster
@@ -456,6 +461,9 @@ cmd_cluster() {
       echo "Panel:          $MASTER_URL/#/admin"
       echo "Administrador:  $ADMIN_EMAIL"
       echo "Contraseña:     $ADMIN_PASSWORD"
+      echo
+      echo "Consola y SSH de las VMs (máster y nodos):"
+      echo "  usuario cloudplay · contraseña $VM_PASSWORD   (luego: sudo -i · sudo cloudplay status)"
       echo
       echo "Máster:         VM $MASTER_VMID (cloudplay-master) · $MASTER_ADDR"
       echo "Nodos:          VM ${NEW_NODE_IDS:-ninguno}"

@@ -124,6 +124,8 @@ python3 -c "import sys,yaml; [yaml.safe_load(open(f)) for f in sys.argv[1:]]" "$
 grep -q "Plataforma:     http://192.168.1.100" "$T/cluster.txt" || fail "resumen sin URL"
 grep -q "También HTTPS:  https://192.168.1.100" "$T/cluster.txt" || fail "resumen sin HTTPS"
 grep -q "Nodos:          VM 201 202 203" "$T/cluster.txt" || fail "resumen sin nodos"
+grep -q "usuario cloudplay · contraseña [A-Za-z0-9]\{14\}" "$T/cluster.txt" || fail "resumen sin la contraseña de las VMs"
+for id in 200 201 202 203; do has "qm set $id --cipassword "; done
 grep -q "Descargando imágenes" "$T/out" || fail "no se enseña el progreso de la instalación del máster"
 grep -q "resérvala en el router para la MAC BC:24:11:AA:BB:CC" "$T/out" || fail "falta el aviso de la IP por DHCP"
 [ "$(stat -c %a "$T/cluster.env")" = 600 ] || fail "cluster.env debería ser solo de root"
@@ -133,6 +135,8 @@ printf 'hostpci0: 0000:01:00,pcie=1\n' > "$T/conf/201.conf"; printf 'hostpci0: 0
 : > "$STATE/log"; rm -f "$STATE/nodespoll"
 bash "$PVE" cluster-add 1 > "$T/out2" 2>&1 || { cat "$T/out2"; fail "cluster-add terminó con error"; }
 has "qm create 204 --name cloudplay-node-204"
+vmp=$(sed -n 's/.*contraseña \([A-Za-z0-9]*\) .*/\1/p' "$T/cluster.txt")
+has "qm set 204 --cipassword $vmp"  # los nodos nuevos, con la misma contraseña
 grep -q "hostpci" "$STATE/log" && fail "cluster-add ha puesto una GPU que ya está en uso"
 grep -q "Nodos nuevos: VM 204" "$T/out2" || fail "cluster-add sin resumen"
 
