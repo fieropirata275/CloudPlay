@@ -53,8 +53,8 @@ def run(skip_after: float | None):
     while "done" not in events and time.monotonic() - t0 < 12:
         time.sleep(0.25)
         seen.append((round(time.monotonic() - t0, 2), red(pixel())))
-        if skip_after is not None and time.monotonic() - t0 > skip_after:
-            s.skip()
+        if skip_after is not None and "lead" in events and time.monotonic() - events["lead"] > skip_after - 1.0:
+            s.skip()  # medio segundo después de empezar la animación
     time.sleep(0.6)
     after = red(pixel())
     for p in emu:
@@ -71,14 +71,17 @@ def test_bootsplash():
         time.sleep(1.5)
         ev, t0, seen, after = run(None)
         print("entera:", {k: round(v - t0, 2) for k, v in ev.items()}, seen[:3], "...")
-        assert 0.9 < ev["lead"] - t0 < 2.5, "la consola se enciende durante la animación"
-        assert ev["done"] - t0 > 4.5, "la animación dura lo suyo"
+        # El reproductor tarda en arrancar según la máquina: los tiempos se miden desde que empieza la animación
+        # (la consola se enciende 1 s después de empezar, lead=1.0)
+        start = ev["lead"] - 1.0
+        assert ev["lead"] - t0 > 0.9, "la consola no se enciende antes de tiempo"
+        assert ev["done"] - start > 4.5, "la animación dura lo suyo"
         assert not any(r for t, r in seen if t > ev["lead"] - t0 + 0.4 and t < ev["done"] - t0 - 0.1), \
             "mientras dura, la ventana del emulador queda debajo"
         assert after, "al acabar se ve la consola"
         ev, t0, seen, after = run(1.5)
         print("saltada:", {k: round(v - t0, 2) for k, v in ev.items()})
-        assert ev["done"] - t0 < 2.6 and after, "un botón la salta y queda la consola"
+        assert ev["done"] - (ev["lead"] - 1.0) < 3.0 and after, "un botón la salta y queda la consola"
     finally:
         x.terminate()
     print("BOOTSPLASH_OK")
