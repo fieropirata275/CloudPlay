@@ -8,7 +8,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 PVE="$HERE/../../deploy/proxmox/cloudplay-pve.sh"
 T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
-mkdir -p "$T/bin" "$T/snippets" "$T/img" "$T/conf" "$T/state"
+mkdir -p "$T/bin" "$T/vz" "$T/img" "$T/conf" "$T/state"
 export STATE="$T/state" T
 
 # ---------------------------------------------------------------- sysfs falso: 3 gráficas + IOMMU
@@ -29,15 +29,19 @@ echo "hostpci0: 0000:04:00,pcie=1" > "$T/conf/100.conf"
 # ---------------------------------------------------------------- órdenes falsas
 cat > "$T/bin/pvesh" <<'EOF'
 #!/usr/bin/env bash
-n=$(cat "$STATE/nextid" 2>/dev/null || echo 200); echo $((n + 1)) > "$STATE/nextid"; echo "$n"
+case "$2" in
+  /storage)  # como Proxmox 9: la configuración de los almacenamientos solo por la API
+    printf '[{"storage":"local","type":"dir","path":"%s","content":"iso,vztmpl,backup"},{"storage":"local-lvm","type":"lvmthin","content":"images,rootdir"}]\n' "$T/vz" ;;
+  /cluster/nextid) n=$(cat "$STATE/nextid" 2>/dev/null || echo 200); echo $((n + 1)) > "$STATE/nextid"; echo "$n" ;;
+  *) exit 1 ;;
+esac
 EOF
 cat > "$T/bin/pvesm" <<'EOF'
 #!/usr/bin/env bash
 case "$1" in
   status) printf 'Name Type Status Total Used Available %%\nlocal dir active 100 10 90 10%%\nlocal-lvm lvmthin active 900 100 800 11%%\n' ;;
-  config) printf 'dir: local\n\tpath /var/lib/vz\n\tcontent iso,vztmpl,backup\n' ;;
   set) echo "pvesm $*" >> "$STATE/log" ;;
-  path) echo "$T/snippets/x" ;;
+  *) echo "ERROR: unknown command 'pvesm $1'" >&2; exit 255 ;;   # «pvesm config» no existe
 esac
 EOF
 cat > "$T/bin/qm" <<'EOF'
@@ -107,7 +111,7 @@ has "--cicustom vendor=local:snippets/cloudplay-cluster-node.yaml"
 has "local-lvm:0,import-from=$T/img/noble-server-cloudimg-amd64.img"
 has "pvesm set local --content iso,vztmpl,backup,snippets"
 for id in 200 201 202 203; do [ -f "$STATE/started.$id" ] || fail "la VM $id no arrancó"; done
-M="$T/snippets/cloudplay-cluster-master.yaml" N="$T/snippets/cloudplay-cluster-node.yaml"
+M="$T/vz/snippets/cloudplay-cluster-master.yaml" N="$T/vz/snippets/cloudplay-cluster-node.yaml"
 [ "$(stat -c %a "$M")" = 600 ] || fail "el cloud-init del máster debería ser solo de root"
 grep -q "releases/download/v9.9.9/get.sh" "$M" || fail "el máster no instala la versión del despliegue"
 grep -q "get.sh orchestrator --join-token [0-9a-f]\{48\} --admin-email admin@cloudplay.lan --admin-password " "$M" || fail "argumentos del máster: $(cat "$M")"
@@ -144,7 +148,7 @@ has "--ipconfig0 ip=192.168.1.50/24,gw=192.168.1.1"
 has "qm set 200 --nameserver"
 grep -q "hostpci" "$STATE/log" && fail "--gpu-pci none no debería pasar GPUs"
 has "--cores 4 --memory 6144"
-grep -q -- "--lan-ip 192.168.1.50" "$T/snippets/cloudplay-cluster-master.yaml" || fail "el máster con IP fija debería anunciarla"
+grep -q -- "--lan-ip 192.168.1.50" "$T/vz/snippets/cloudplay-cluster-master.yaml" || fail "el máster con IP fija debería anunciarla"
 grep -q "resérvala" "$T/out4" && fail "con IP fija no hace falta reservar nada"
 
 # ---------------------------------------------------------------- 5) no cabe en la memoria

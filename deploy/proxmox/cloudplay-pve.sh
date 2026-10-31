@@ -22,7 +22,7 @@ RELEASE_VERSION="${CLOUDPLAY_VERSION:-$(cat "$HERE/VERSION" 2>/dev/null || echo 
   "https://github.com/${CLOUDPLAY_REPO:-fieropirata275/CloudPlay}/releases/latest" 2>/dev/null | sed 's#.*/##') || true
 RELEASE_REPO="${CLOUDPLAY_REPO:-fieropirata275/CloudPlay}"
 NODES=1 MASTER_IP="" GATEWAY="" DNS="" MASTER_CORES=4 MASTER_MEMORY=8192 MASTER_DISK=48 DOMAIN="" TUNNEL_TOKEN="" YES=0
-STORAGE_SET=0 BRIDGE_SET=0 GPU_SET=0 CORES_SET=0 MEMORY_SET=0 IMG="" MASTER_URL="" MASTER_ADDR="" MASTER_VMID="" NEW_NODE_IDS=""
+SNIPPETS_SET=0 STORAGE_SET=0 BRIDGE_SET=0 GPU_SET=0 CORES_SET=0 MEMORY_SET=0 IMG="" MASTER_URL="" MASTER_ADDR="" MASTER_VMID="" NEW_NODE_IDS=""
 CLUSTER_ENV="${CLOUDPLAY_CLUSTER_ENV:-/root/cloudplay-cluster.env}" CLUSTER_TXT="${CLOUDPLAY_CLUSTER_TXT:-/root/cloudplay-cluster.txt}"
 SYSFS="${CLOUDPLAY_SYSFS:-/sys}" PVE_QEMU_CONF="${CLOUDPLAY_PVE_QEMU_CONF:-/etc/pve/qemu-server}"
 POLL="${CLOUDPLAY_POLL:-10}" BOOT_TIMEOUT=900 INSTALL_TIMEOUT=3600 NODE_TIMEOUT=5400
@@ -52,7 +52,7 @@ if [ $# -gt 0 ] && [[ "$1" != --* ]]; then ARG1="$1"; shift; fi
 while [ $# -gt 0 ]; do
   case "$1" in
     --storage) STORAGE="$2"; STORAGE_SET=1; shift ;;
-    --snippets) SNIPPETS="$2"; shift ;;
+    --snippets) SNIPPETS="$2"; SNIPPETS_SET=1; shift ;;
     --bridge) BRIDGE="$2"; BRIDGE_SET=1; shift ;;
     --nodes) NODES="$2"; shift ;;
     --master-ip) MASTER_IP="$2"; shift ;;
@@ -89,17 +89,25 @@ need_pve() { command -v qm >/dev/null && command -v pvesh >/dev/null || die "Est
 next_id() { pvesh get /cluster/nextid; }
 
 snippets_path() {
-  # Ruta en disco del almacenamiento de snippets (y lo habilita si hace falta)
-  local content path
-  content=$(pvesm config "$SNIPPETS" 2>/dev/null | awk '/^[ \t]*content/ {print $2}') || true
-  [ -n "$content" ] || die "No existe el almacenamiento $SNIPPETS"
+  # Ruta en disco del almacenamiento de snippets (y lo habilita si hace falta). La configuración de los
+  # almacenamientos se lee con la API (pvesh), igual en Proxmox 8 y 9. Tiene que ser uno con carpeta (dir, NFS, CIFS…).
+  local all st content path
+  all=$(pvesh get /storage --output-format json 2>/dev/null) || die "No se pudo leer la lista de almacenamientos (pvesh get /storage)"
+  st=$(echo "$all" | jq -c --arg s "$SNIPPETS" '.[] | select(.storage == $s and (.path // "") != "" and (.disable // 0) == 0)' | head -n1)
+  if [ -z "$st" ] && [ "$SNIPPETS_SET" = 0 ]; then
+    # sin «local» (renombrado o borrado): el primer almacenamiento con carpeta que haya
+    st=$(echo "$all" | jq -c '[.[] | select((.path // "") != "" and (.disable // 0) == 0)] | (map(select(.type == "dir")) + .) | .[0] // empty')
+  fi
+  [ -n "$st" ] || die "No hay ningún almacenamiento con carpeta para los snippets de cloud-init (${SNIPPETS}). Usa --snippets NOMBRE"
+  SNIPPETS=$(echo "$st" | jq -r '.storage')
+  content=$(echo "$st" | jq -r '.content // ""')
+  path=$(echo "$st" | jq -r '.path')
   if [[ ",$content," != *,snippets,* ]]; then
     say "Habilitando «snippets» en $SNIPPETS (necesario para cloud-init personalizado)" >&2
-    pvesm set "$SNIPPETS" --content "$content,snippets"
+    pvesm set "$SNIPPETS" --content "${content:+$content,}snippets" >&2 || die "No se pudo habilitar «snippets» en $SNIPPETS"
   fi
-  path=$(pvesm path "$SNIPPETS:snippets/x" | sed 's#/x$##')
-  mkdir -p "$path"
-  echo "$path"
+  mkdir -p "$path/snippets"
+  echo "$path/snippets"
 }
 
 # Imagen cloud oficial de Ubuntu 24.04 (se descarga una vez y se verifica con su SHA256). Escribe su ruta.
@@ -117,6 +125,7 @@ ubuntu_image() {
 
 cmd_node_template() {
   need_pve
+  need_tools
   [ -n "$CP_URL" ] && [ -n "$JOIN_TOKEN" ] || die "Faltan --cp-url y --join-token (en el orquestador: cloudplay node-command)"
   local id="${VMID:-$TEMPLATE_ID}" snip img
   qm status "$id" >/dev/null 2>&1 && die "Ya existe la VM $id (usa --vmid)"
