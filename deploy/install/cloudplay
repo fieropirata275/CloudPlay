@@ -239,6 +239,8 @@ case "${1:-help}" in
   join-token) cmd_join_token ;;
   node-command) cmd_node_command ;;
   tunnel) shift; cmd_tunnel "$@" ;;
+  cloudflare) shift; need_root; is_orch || die "Va en el máster (orquestador)"; exec bash "$DEST/deploy/install/cloudflare.sh" "$@" ;;
+  mail) shift; need_root; is_orch || die "Va en el máster (orquestador)"; exec bash "$DEST/deploy/install/mail.sh" "$@" ;;
   turn-cloudflare) shift; cmd_turn_cloudflare "$@" ;;
   drain) shift; cmd_drain "$@" ;;
   resume) cmd_resume ;;
@@ -255,7 +257,9 @@ cloudplay — operar CloudPlay en esta máquina
   credentials            URL, administrador y token de unión
   join-token             token para unir nodos
   node-command           línea para instalar un nodo nuevo
-  tunnel TOKEN           publicar con Cloudflare Tunnel
+  cloudflare [status|off] publicar en Internet con Cloudflare (túnel, DNS y TURN solos, con un token de API)
+  mail setup|status|test|off  correo: Resend (dominio y DNS automáticos) o SMTP
+  tunnel TOKEN           publicar con un túnel de Cloudflare ya creado a mano
   turn-cloudflare ID TK  vídeo por el TURN de Cloudflare (sin abrir puertos UDP)
   drain [--wait]         nodo: dejar de aceptar partidas (mantenimiento)
   resume                 nodo: volver a aceptar partidas

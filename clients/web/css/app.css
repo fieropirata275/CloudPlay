@@ -492,3 +492,29 @@ label input { margin-top: 0.3rem; color: var(--glass); font-size: 1rem; }
   .lanfx-console, .lanfx-cable path, .lanfx-packets i, .lanfx-title, .lanfx-sub { animation: none !important; opacity: 1; stroke-dashoffset: 0; }
   .lanfx-packets { display: none; }
 }
+
+/* ---------------------------------------------------------------- panel: acceso desde Internet y correo */
+.card { background: var(--ink-2); border: 1px solid var(--ink-3); border-radius: 14px; padding: 1rem 1.2rem; }
+.card h3 { margin: 0 0 0.8rem; font-size: 1rem; }
+.card code, .card pre { background: rgba(0,0,0,0.3); border-radius: 6px; padding: 0.1em 0.4em; }
+.card pre { padding: 0.7rem 0.9rem; overflow-x: auto; white-space: pre-wrap; word-break: break-all; }
+.card .row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+.card .row > input { flex: 1 1 12rem; min-width: 0; }
+.sys-line { display: flex; flex-wrap: wrap; gap: 0.6rem 1.2rem; align-items: baseline; margin: 0 0 0.6rem; }
+.sys-line b { font-size: 1.05rem; }
+.mail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); grid-gap: 1rem; margin-top: 1rem; }
+.mail-kinds { display: grid; grid-gap: 0.45rem; margin-bottom: 1rem; }
+.mail-kinds label { display: flex; gap: 0.6rem; align-items: center; }
+.mail-kinds small { color: var(--mist); }
+.mail-field { display: block; margin-top: 0.7rem; }
+.mail-field input, .mail-field select { display: block; width: 100%; margin-top: 0.3rem; }
+.mail-preview { width: 100%; height: 22rem; border: 0; border-radius: 10px; background: #0d0f1a; margin-top: 0.4rem; }
+.small { font-size: 0.85rem; margin: 0.3rem 0 0; }
+.dns { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 0.6rem; }
+.dns td { padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--ink-2); word-break: break-all; }
+#mail-log { margin-top: 1rem; }
+@media (max-width: 40rem) { .mail-preview { height: 18rem; } }
+.mail-kinds input[type=checkbox] { width: 1.15rem; height: 1.15rem; flex: 0 0 auto; margin: 0; padding: 0; accent-color: var(--led); }
+.mail-kinds label span { flex: 1; }
+.mail-field select { font: inherit; color: var(--glass); background: var(--ink); border: 1px solid var(--ink-3); border-radius: var(--r-sm); padding: 0.6em 0.85em; }
+.card .row > input { width: auto; margin: 0; }

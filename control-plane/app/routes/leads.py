@@ -4,7 +4,7 @@ import re
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from .. import bus
+from .. import bus, mail
 from ..db import AsyncSession, get_db
 from ..models import Lead
 from ..security import sha256
@@ -43,4 +43,8 @@ async def create_lead(body: LeadIn, request: Request, db: AsyncSession = Depends
         message=(body.message or "").strip() or None,
     ))
     await db.commit()
+    ctx = {"name": body.name.strip(), "email": body.email.strip().lower(), "company": (body.company or "").strip(),
+           "players": (body.players or "").strip(), "message": (body.message or "").strip()}
+    mail.queue("lead_ack", ctx["email"], ctx)
+    await mail.queue_admins("lead", ctx)
     return {"ok": True}

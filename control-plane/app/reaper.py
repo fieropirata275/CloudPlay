@@ -5,7 +5,7 @@ from datetime import timedelta
 
 from sqlalchemy import select
 
-from . import bus
+from . import bus, mail
 from .config import settings
 from .db import SessionLocal
 from .models import ACTIVE_STATES, Node, Session, now
@@ -24,10 +24,13 @@ async def reap_once() -> None:
             n.status = "offline"
             log.warning("nodo %s sin heartbeat -> offline", n.name)
 
+        down = [(n.id, n.name) for n in dead]
+        failed = {n.id: 0 for n in dead}
         active = (await db.scalars(select(Session).where(Session.status.in_(ACTIVE_STATES)))).all()
         start_cutoff = t - timedelta(seconds=settings.session_start_timeout)
         for s in active:
             if s.node_id in dead_ids:
+                failed[s.node_id] += 1
                 s.status, s.error, s.ended_at = "failed", "Nodo caído", t
             elif s.status in ("starting", "pending", "ending") and _aware(s.dispatched_at or s.created_at) < start_cutoff:
                 if s.status != "ending":
@@ -39,6 +42,10 @@ async def reap_once() -> None:
         await db.commit()
     for node_id, sid in stops:
         await bus.publish(f"node:{node_id}", {"type": "stop", "session_id": sid})
+    # Aviso al NOC por correo (como mucho uno por nodo y hora, aunque parpadee)
+    for node_id, name in down:
+        if await bus.r().set(f"mail:nodedown:{node_id}", "1", nx=True, ex=3600):
+            await mail.queue_admins("node_down", {"name": name, "failed": failed[node_id]})
 
 
 def _aware(dt):

@@ -41,6 +41,10 @@ clientes ──WebRTC (H.264/Opus + input)──▶ nodos GPU (un contenedor por
   - Transiciones entre pantallas, barra superior que se condensa con el scroll (con barra de progreso de Motion `scroll`), carátulas que aparecen con `inView`, inclinación con reflejo al pasar el ratón.
   - Código de la tele tipo split-flap, palabra que rota en el login, menú y panel con entrada en cascada, pista de arranque que se llena por pasos.
   - Efectos inspirados en Skiper UI portados a JS sin React: texto que rueda, desenfoque progresivo y palabra rotatoria.
+- **Cloudflare y correo en un comando desde el máster**: `sudo cloudplay cloudflare` publica la plataforma en Internet
+  (túnel, DNS y TURN creados con un token de API, sin abrir puertos) y `sudo cloudplay mail setup` monta el correo
+  (Resend con dominio, SPF/DKIM/DMARC y verificación automáticos, o SMTP). En el panel: estado, qué correos salen,
+  a quién avisar, prueba, vista previa y registro. Recuperar la contraseña por correo desde el login.
 - **Proxmox en un comando**: en el shell del host, `get.sh proxmox cluster --nodes 3` crea un máster y 3 nodos
   gaming en VMs, con red, GPUs en passthrough y CloudPlay ya instalado y unido (imagen `cloudplay-pve` de GHCR).
   Sin dominio, la plataforma va por IP en la red local (`http://IP` y `https://IP`). Ver `docs/DEPLOY.md`.

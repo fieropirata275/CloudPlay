@@ -25,7 +25,7 @@
     });
   }
   // Intensidad del fondo 3D en cada pantalla (en la partida se apaga del todo)
-  var SCENE_LEVEL = { 'screen-login': 1, 'screen-link': 1, 'screen-library': 0.6, 'screen-admin': 0.35, 'screen-player': 1 };
+  var SCENE_LEVEL = { 'screen-login': 1, 'screen-link': 1, 'screen-reset': 1, 'screen-library': 0.6, 'screen-admin': 0.35, 'screen-player': 1 };
   function show(id) {
     var next = document.getElementById(id);
     var prev = $('.screen.active');
@@ -120,6 +120,7 @@
     if (CP.adminStop) CP.adminStop();
     if (!/^#\/play\//.test(h) && state.player) endPlayer();
     if (h.indexOf('#/link') === 0) return renderLink();
+    if (h.indexOf('#/reset') === 0) return renderReset();
     if (!CP.token()) return renderLogin();
     if (h.indexOf('#/play/') === 0) return renderPlay(h.slice(7));
     if (h.indexOf('#/admin') === 0) return renderAdmin();
@@ -143,6 +144,10 @@
     $('#server-input').value = CP.serverUrl();
     $('#login-form').hidden = isTV;
     $('#login-toggle').hidden = !isTV;
+    $('#forgot-form').hidden = true;
+    // "¿Has olvidado la contraseña?" solo si el servidor tiene correo
+    $('#forgot-btn').hidden = true;
+    CP.api('GET', '/api/auth/options').then(function (o) { $('#forgot-btn').hidden = !(o && o.password_reset); }).catch(function () {});
     playMark($('#screen-login'));
     fx.splitReveal($('#screen-login .wordmark'), { type: 'chars', stagger: 0.04, delay: 0.15, duration: 0.7 });
     startDeviceFlow();
@@ -183,6 +188,49 @@
       })
       .catch(function (e2) { err.textContent = e2.status === 401 ? 'Email o contraseña incorrectos.' : e2.message; });
   });
+  // ------------------------------------------------- contraseña olvidada
+  $('#forgot-btn').addEventListener('click', function () {
+    $('#login-form').hidden = true;
+    $('#forgot-form').hidden = false;
+    $('#forgot-msg').textContent = '';
+    $('#forgot-email').value = $('#email').value;
+    $('#forgot-email').focus();
+  });
+  $('#forgot-back').addEventListener('click', function () { $('#forgot-form').hidden = true; $('#login-form').hidden = false; });
+  $('#forgot-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var msg = $('#forgot-msg');
+    msg.textContent = 'Enviando…';
+    CP.api('POST', '/api/auth/forgot', { email: $('#forgot-email').value }).then(function (r) {
+      msg.textContent = r.mail ? 'Si hay una cuenta con ese correo, te acaba de llegar el enlace. Mira también en spam.'
+        : 'Este servidor no tiene correo: pide al administrador que te cambie la contraseña.';
+    }).catch(function (e2) { msg.textContent = e2.message; });
+  });
+
+  function resetToken() {
+    var m = /[?&]token=([^&]+)/.exec(location.hash);
+    return m ? decodeURIComponent(m[1]) : '';
+  }
+  function renderReset() {
+    show('screen-reset');
+    playMark($('#screen-reset'));
+    $('#reset-msg').textContent = resetToken() ? '' : 'Al enlace le falta el código: ábrelo tal cual desde el correo.';
+    $('#reset-pass').focus();
+  }
+  $('#reset-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var msg = $('#reset-msg');
+    if ($('#reset-pass').value !== $('#reset-pass2').value) { msg.textContent = 'Las dos contraseñas no coinciden.'; return; }
+    msg.textContent = '';
+    CP.api('POST', '/api/auth/reset', { token: resetToken(), password: $('#reset-pass').value }).then(function (r) {
+      CP.token(r.access_token);
+      state.me = r.user;
+      $('#reset-pass').value = $('#reset-pass2').value = '';
+      toast('Contraseña cambiada');
+      location.hash = '#/library';
+    }).catch(function (e2) { msg.textContent = e2.message; });
+  });
+
   $('#login-toggle').addEventListener('click', function () { $('#login-form').hidden = false; $('#login-toggle').hidden = true; CP.navFocusFirst(); });
   $('#server-save').addEventListener('click', function () {
     CP.store('cp_server', $('#server-input').value.trim() || null);

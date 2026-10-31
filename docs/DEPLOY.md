@@ -31,9 +31,54 @@ sin cortes a la última Release. Para publicar una versión nueva: `git tag v1.1
 
 ---
 
-## Publicar al mundo en 2 pasos (Cloudflare Tunnel)
+## Publicar al mundo en un comando (Cloudflare, desde el máster)
 
-Sin abrir puertos, sin IP fija y con TLS de Cloudflare.
+En la consola del máster (también vale si está en modo red local, p. ej. el que crea el clúster de Proxmox):
+
+```bash
+sudo cloudplay cloudflare
+```
+
+Pide dos cosas: un **token de API de Cloudflare** y el **nombre** de la plataforma (`play.tudominio.com`, de un dominio
+que ya tengas en Cloudflare). El token se crea en *Mi perfil → Tokens de API → Crear token personalizado* con:
+
+| Permiso | Para qué |
+|---|---|
+| Cuenta · Cloudflare Tunnel · Editar | crear el túnel y sus rutas |
+| Zona · DNS · Editar · y · Zona · Zona · Leer | los registros DNS (y los del correo) |
+| Cuenta · Calls · Editar (recomendado) | TURN: que el vídeo llegue a jugadores de cualquier red sin abrir puertos UDP |
+
+Con eso crea el túnel gestionado desde Cloudflare, sus rutas (`play…` → web, `s3.play…` → partidas guardadas), los
+CNAME con proxy, una clave TURN, y pasa el máster a modo túnel **sin cortar partidas**. La red local sigue entrando por
+la IP del máster (los nodos de casa no dependen de salir a Internet). Si el nombre ya apuntaba a otra cosa, pregunta
+antes de sustituirlo. Repetirlo no duplica nada.
+
+- `sudo cloudplay cloudflare status`: salud del túnel, si responde por HTTPS y si hay TURN.
+- `sudo cloudplay cloudflare off [--delete]`: vuelve a solo red local (y con `--delete` borra túnel, DNS y clave TURN).
+- Sin preguntas: `sudo cloudplay cloudflare --token T --hostname play.tudominio.com [--landing www.tudominio.com] --yes`.
+- El panel (`/#/admin` → *Acceso desde Internet*) enseña cómo está publicada la plataforma.
+
+## Correo en un comando (desde el máster)
+
+```bash
+sudo cloudplay mail setup
+```
+
+- **Resend** (recomendado, 3.000 correos/mes gratis): con su API key da de alta tu dominio (región UE), escribe SPF,
+  DKIM y DMARC en Cloudflare si el máster está enlazado (si no, te enseña los registros), lo verifica, configura
+  CloudPlay y te manda un correo de prueba.
+- **SMTP**: Gmail (contraseña de aplicación), Brevo, Amazon SES, Mailgun o el de tu empresa (`--smtp-host … --smtp-port …`).
+- `sudo cloudplay mail status` · `sudo cloudplay mail test [correo]` · `sudo cloudplay mail off`.
+
+Qué sale: bienvenida al crear una cuenta, **recuperar la contraseña** (enlace de un solo uso, 60 min; aparece
+"¿Has olvidado la contraseña?" en el login), aviso de contraseña cambiada, confirmación al que pide una demo, y al NOC:
+nueva solicitud de demo y **nodo gaming caído** (como mucho uno por nodo y hora). En el panel (`/#/admin` → *Correo*) se
+eligen los tipos, a quién avisar, el nombre del remitente y la dirección de respuesta; hay prueba, vista previa de cada
+correo, estado del dominio con sus DNS y el registro de envíos.
+
+## Publicar al mundo a mano (Cloudflare Tunnel)
+
+Sin abrir puertos, sin IP fija y con TLS de Cloudflare. (Lo mismo que hace `cloudplay cloudflare`, paso a paso.)
 
 **Paso 1 · en Cloudflare (2 minutos)**
 

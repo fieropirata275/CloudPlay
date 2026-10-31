@@ -3,15 +3,15 @@ la tele muestra un código corto, lo apruebas desde el móvil en /#/link."""
 import json
 import secrets
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from .. import bus
+from .. import bus, mail
 from ..config import settings
 from ..db import AsyncSession, get_db
 from ..models import User
-from ..security import current_user, hash_password, make_jwt, verify_password
+from ..security import current_user, hash_password, make_jwt, sha256, verify_password
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -22,6 +22,15 @@ _ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # sin 0/O/1/I para teclear con e
 
 class Credentials(BaseModel):
     email: str = Field(min_length=3, max_length=255)
+    password: str = Field(min_length=8, max_length=256)
+
+
+class Forgot(BaseModel):
+    email: str = Field(min_length=3, max_length=255)
+
+
+class Reset(BaseModel):
+    token: str = Field(min_length=20, max_length=200)
     password: str = Field(min_length=8, max_length=256)
 
 
@@ -59,6 +68,55 @@ async def register(body: Credentials, db: AsyncSession = Depends(get_db)):
     user = User(email=email, password_hash=hash_password(body.password))
     db.add(user)
     await db.commit()
+    mail.queue("welcome", email, {"email": email})
+    return _token_response(user)
+
+
+@router.get("/options")
+async def options():
+    """Lo que la pantalla de login puede ofrecer: registro y recuperar la contraseña por correo"""
+    return {"registration": settings.allow_registration, "password_reset": mail.configured()}
+
+
+async def _limited(key: str, limit: int) -> bool:
+    r = bus.r()
+    n = await r.incr(key)
+    if n == 1:
+        await r.expire(key, 3600)
+    return n > limit
+
+
+@router.post("/forgot")
+async def forgot(body: Forgot, request: Request, db: AsyncSession = Depends(get_db)):
+    """Manda un enlace para elegir contraseña nueva. Responde lo mismo exista o no la cuenta."""
+    email = body.email.lower().strip()
+    ip = (request.headers.get("x-forwarded-for") or (request.client.host if request.client else "?")).split(",")[0].strip()
+    if await _limited(f"forgot:ip:{sha256(ip)[:16]}", 10) or await _limited(f"forgot:mail:{sha256(email)[:16]}", 3):
+        raise HTTPException(429, "Demasiados intentos. Prueba dentro de un rato.")
+    user = await db.scalar(select(User).where(User.email == email))
+    if user is not None and mail.configured():
+        token = secrets.token_urlsafe(32)
+        ttl = settings.reset_ttl_minutes * 60
+        await bus.r().set(f"reset:{sha256(token)}", user.id, ex=ttl)
+        link = f"{settings.public_url.rstrip('/')}/#/reset?token={token}"
+        mail.queue("reset", email, {"email": email, "link": link, "minutes": settings.reset_ttl_minutes})
+    return {"ok": True, "mail": mail.configured()}
+
+
+@router.post("/reset")
+async def reset(body: Reset, db: AsyncSession = Depends(get_db)):
+    r = bus.r()
+    key = f"reset:{sha256(body.token)}"
+    user_id = await r.get(key)
+    if not user_id:
+        raise HTTPException(410, "El enlace ha caducado o ya se usó. Pide otro.")
+    await r.delete(key)  # un solo uso
+    user = await db.get(User, user_id)
+    if user is None:
+        raise HTTPException(410, "La cuenta ya no existe")
+    user.password_hash = hash_password(body.password)
+    await db.commit()
+    mail.queue("password_changed", user.email, {"email": user.email})
     return _token_response(user)
 
 

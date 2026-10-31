@@ -4,10 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
-from .. import bus
+from .. import bus, mail
+from ..config import settings
 from ..db import AsyncSession, get_db
 from ..dispatch import queue_positions
-from ..models import ACTIVE_STATES, PLACED_STATES, PLATFORMS, Game, Lead, Node, Session, User, now
+from ..models import ACTIVE_STATES, PLACED_STATES, PLATFORMS, Game, Lead, MailLog, Node, Session, User, now
 from ..security import admin_user, hash_password, new_secret, sha256
 from .catalog import game_dict
 from .sessions import stop_session
@@ -150,6 +151,7 @@ async def add_user(body: UserIn, db: AsyncSession = Depends(get_db)):
     u = User(email=email, password_hash=hash_password(body.password), is_admin=body.is_admin, max_sessions=body.max_sessions)
     db.add(u)
     await db.commit()
+    mail.queue("welcome", u.email, {"email": u.email})
     return {"id": u.id, "email": u.email}
 
 
@@ -220,3 +222,82 @@ async def list_leads(db: AsyncSession = Depends(get_db)):
          "message": l.message, "created_at": l.created_at.isoformat() if l.created_at else None}
         for l in rows
     ]
+
+
+# ------------------------------------------------------------------ correo y acceso desde Internet
+class MailPrefs(BaseModel):
+    types: dict[str, bool] | None = None
+    notify: list[str] | None = None
+    sender_name: str | None = Field(default=None, max_length=80)
+    reply_to: str | None = Field(default=None, max_length=255)
+
+
+class MailTest(BaseModel):
+    to: str | None = Field(default=None, max_length=255)
+
+
+@router.get("/system")
+async def system():
+    """Cómo se llega a la plataforma (red local, dominio o Cloudflare Tunnel) y si hay correo"""
+    return {"exposure": settings.exposure, "public_url": settings.public_url, "lan_url": settings.lan_url,
+            "turn": settings.turn_provider, "mail": mail.configured()}
+
+
+@router.get("/mail")
+async def mail_status(db: AsyncSession = Depends(get_db)):
+    prefs = await mail.get_prefs(db)
+    rows = (await db.scalars(select(MailLog).order_by(MailLog.created_at.desc()).limit(30))).all()
+    return {
+        "configured": mail.configured(),
+        "provider": settings.mail_provider or None,
+        "from": settings.mail_from or None,
+        "smtp": f"{settings.smtp_host}:{settings.smtp_port}" if settings.mail_provider == "smtp" else None,
+        "domain": await mail.domain_status(),
+        "prefs": prefs,
+        "recipients": await mail.admin_recipients(db, prefs),
+        "kinds": [{"kind": k, "label": mail.LABELS[k], "to": v[1], "locked": k in mail.ALWAYS} for k, v in mail.KINDS.items()],
+        "log": [mail.recent_log_dict(r) for r in rows],
+    }
+
+
+@router.put("/mail")
+async def mail_prefs(body: MailPrefs, db: AsyncSession = Depends(get_db)):
+    data = body.model_dump(exclude_none=True)
+    if "notify" in data:
+        data["notify"] = [e.strip().lower() for e in data["notify"] if e.strip()]
+        bad = [e for e in data["notify"] if "@" not in e or " " in e]
+        if bad:
+            raise HTTPException(422, f"Revisa estos correos: {', '.join(bad)}")
+    return await mail.save_prefs(db, data)
+
+
+@router.post("/mail/test")
+async def mail_test(body: MailTest, user: User = Depends(admin_user)):
+    to = (body.to or user.email).strip()
+    res = await mail.send("test", to, {"provider": settings.mail_provider or "ninguno", "sender": settings.mail_from or "—"},
+                          force=True)
+    if res["status"] != "sent":
+        raise HTTPException(502 if res["status"] == "failed" else 409, res["error"] or "No se ha enviado")
+    return {"ok": True, "to": to}
+
+
+@router.post("/mail/verify")
+async def mail_verify():
+    d = await mail.domain_status(verify=True)
+    if d is None:
+        raise HTTPException(409, "No hay dominio de Resend que verificar")
+    return d
+
+
+@router.get("/mail/preview/{kind}")
+async def mail_preview(kind: str):
+    if kind not in mail.KINDS:
+        raise HTTPException(404)
+    sample = {"email": "jugador@ejemplo.com", "link": settings.public_url.rstrip("/") + "/#/reset?token=EJEMPLO",
+              "minutes": settings.reset_ttl_minutes, "name": "Ana García", "company": "Bar Retro", "players": "4",
+              "message": "Queremos montarlo en el local", "failed": 2, "provider": settings.mail_provider or "—",
+              "sender": settings.mail_from or "—"}
+    if kind == "node_down":
+        sample["name"] = "cloudplay-node-201"
+    subject, page, _ = mail.render(kind, sample)
+    return {"subject": subject, "html": page}

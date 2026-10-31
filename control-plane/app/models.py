@@ -82,6 +82,25 @@ class Favorite(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
 
 
+class Setting(Base):
+    """Ajustes que se cambian desde el panel (JSON por clave), p. ej. qué correos salen"""
+    __tablename__ = "settings"
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, default="{}")
+
+
+class MailLog(Base):
+    """Registro de correos enviados (sin el cuerpo)"""
+    __tablename__ = "mail_log"
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=uid)
+    to: Mapped[str] = mapped_column(String(500))
+    kind: Mapped[str] = mapped_column(String(32), index=True)
+    status: Mapped[str] = mapped_column(String(16))  # sent | failed | skipped
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    provider_id: Mapped[str] = mapped_column(String(200), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
+
+
 class Lead(Base):
     """Solicitud de demo enviada desde la landing comercial."""
     __tablename__ = "leads"

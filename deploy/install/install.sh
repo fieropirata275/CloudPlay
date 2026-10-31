@@ -263,18 +263,29 @@ install_orchestrator() {
     base="https://$DOMAIN"
   fi
 
+  if [ "$LAN" = 1 ]; then
+    set_env "$env" CP_EXPOSURE lan; set_env "$env" CP_LAN_URL ""
+  elif [ "$tunnel" = 1 ]; then
+    set_env "$env" CP_EXPOSURE tunnel; set_env "$env" CP_LAN_URL "http://$(lan_ip)"
+  else
+    set_env "$env" CP_EXPOSURE domain; set_env "$env" CP_LAN_URL ""
+  fi
+
   if [ "$tunnel" = 1 ]; then
-    # Cloudflare pone el TLS y llega a Caddy por HTTP; nada escucha hacia Internet
-    set_env "$env" CP_SITE "http://$DOMAIN"
+    # Cloudflare pone el TLS y llega a Caddy por HTTP; nada escucha hacia Internet. La red local sigue entrando
+    # por la IP (http y https propio), así los nodos y teles de casa no dependen de salir a Internet.
+    set_env "$env" CP_SITE ":80"
     set_env "$env" LANDING_SITE "http://$landing"
-    set_env "$env" S3_BIND 127.0.0.1
+    set_env "$env" S3_BIND "$(lan_ip)"
+    set_env "$env" CP_LAN_TLS_SITE "https://$(lan_ip)"
+    set_env "$env" CP_AUTO_HTTPS disable_redirects
     profiles="tunnel"
     if [ -n "$(get_env "$env" CP_CF_TURN_KEY_ID)" ]; then
       set_env "$env" CP_TURN_PROVIDER cloudflare
     else
       set_env "$env" CP_TURN_PROVIDER none
       warn "Túnel sin TURN de Cloudflare: el vídeo solo llega si los nodos tienen el rango UDP de WebRTC accesible."
-      warn "Recomendado: cloudplay turn-cloudflare <KEY_ID> <API_TOKEN>"
+      warn "Recomendado: sudo cloudplay cloudflare (lo crea solo) o cloudplay turn-cloudflare <KEY_ID> <API_TOKEN>"
     fi
     set_env "$env" CP_NODE_S3_ENDPOINT "https://s3.$DOMAIN"
   else
@@ -314,7 +325,10 @@ install_orchestrator() {
   if [ "$FIREWALL" = 1 ]; then
     say "Cortafuegos"
     ufw allow 22/tcp >/dev/null
-    if [ "$tunnel" = 0 ]; then
+    if [ "$tunnel" = 1 ]; then
+      # Con túnel nada se abre a Internet; la red local sí entra (web, nodos y partidas guardadas)
+      for p in 80 443 8333; do ufw allow from "$(lan_ip | cut -d. -f1-3).0/24" to any port "$p" proto tcp >/dev/null; done
+    else
       ufw allow 80/tcp >/dev/null
       ufw allow 443 >/dev/null
       if [ "$profiles" = coturn ]; then
@@ -430,7 +444,7 @@ EOF
   cat "$f"
   echo
   ok "Guardado en $f (solo root)"
-  if [ -n "$(get_env "$env" TUNNEL_TOKEN)" ]; then
+  if [ -n "$(get_env "$env" TUNNEL_TOKEN)" ] && [ "$LAN" = 0 ] && [ ! -f "$ETC/cloudflare.env" ]; then
     say "En Cloudflare (Zero Trust → Networks → Tunnels → tu túnel → Public hostnames) añade:"
     echo "    $d  →  http://caddy:80"
     echo "    $l  →  http://caddy:80     (web comercial, opcional)"

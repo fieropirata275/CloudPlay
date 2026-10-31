@@ -35,6 +35,23 @@ class Settings(BaseSettings):
     node_s3_secret_key: str = ""
     node_s3_bucket: str = "cloudplay-saves"
 
+    # Correo (lo configura `cloudplay mail setup` en el máster): "" sin correo, "resend" (API) o "smtp"
+    mail_provider: str = ""
+    mail_from: str = ""  # "CloudPlay <no-reply@play.example.com>"
+    resend_api_key: str = ""
+    resend_api_base: str = "https://api.resend.com"
+    resend_domain_id: str = ""
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_security: str = "starttls"  # starttls | ssl | none
+    reset_ttl_minutes: int = 60
+
+    # Cómo llega la gente al máster (lo escribe el instalador): lan (por IP), domain (TLS propio) o tunnel (Cloudflare)
+    exposure: str = "domain"
+    lan_url: str = ""
+
     admin_email: str | None = None
     admin_password: str | None = None
 

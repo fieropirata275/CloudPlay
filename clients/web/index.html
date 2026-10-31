@@ -41,6 +41,14 @@
           <label>Contraseña<input id="password" type="password" autocomplete="current-password" required minlength="8"></label>
           <button class="btn primary" type="submit">Entrar</button>
           <p id="login-error" class="error" role="alert"></p>
+          <button id="forgot-btn" class="btn quiet" type="button" hidden>¿Has olvidado la contraseña?</button>
+        </form>
+        <form id="forgot-form" class="form" hidden>
+          <p class="muted">Te mandamos un enlace para elegir una contraseña nueva.</p>
+          <label>Email<input id="forgot-email" type="email" autocomplete="username" required></label>
+          <button class="btn primary" type="submit">Enviar el enlace</button>
+          <button id="forgot-back" class="btn quiet" type="button">Volver</button>
+          <p id="forgot-msg" role="status"></p>
         </form>
         <details class="server">
           <summary data-focus>Servidor</summary>
@@ -55,6 +63,24 @@
   </section>
 
   <!-- ============================ LINK (móvil aprueba) ============================ -->
+  <section id="screen-reset" class="screen">
+    <div class="login single">
+      <div class="login-brand">
+        <svg class="mark" viewBox="0 0 200 200" aria-hidden="true"><path class="mark-shape" fill="url(#g-plastic)"/></svg>
+        <h1 class="wordmark">Contraseña nueva</h1>
+        <p class="lede">Elige una contraseña de al menos 8 caracteres.</p>
+      </div>
+      <div class="login-panel">
+        <form id="reset-form" class="form">
+          <label>Contraseña nueva<input id="reset-pass" type="password" autocomplete="new-password" required minlength="8"></label>
+          <label>Repítela<input id="reset-pass2" type="password" autocomplete="new-password" required minlength="8"></label>
+          <button class="btn primary" type="submit">Guardar y entrar</button>
+          <p id="reset-msg" class="error" role="alert"></p>
+        </form>
+      </div>
+    </div>
+  </section>
+
   <section id="screen-link" class="screen">
     <div class="login single">
       <div class="login-brand">
@@ -130,6 +156,28 @@
       <table class="table" id="nodes-table"><thead><tr><th>Nodo</th><th>Estado</th><th>GPU</th><th>Plataformas</th><th>Carga</th><th>Último latido</th><th></th></tr></thead><tbody></tbody></table>
       <h2>Sesiones activas</h2>
       <table class="table" id="sessions-table"><thead><tr><th>Jugador</th><th>Juego</th><th>Estado</th><th>Nodo</th><th>Desde</th><th></th></tr></thead><tbody></tbody></table>
+      <h2>Acceso desde Internet</h2>
+      <div class="card" id="sys-card"><p class="muted">Cargando…</p></div>
+      <h2>Correo</h2>
+      <div class="card" id="mail-card"><p class="muted">Cargando…</p></div>
+      <div class="mail-grid" id="mail-grid" hidden>
+        <div class="card">
+          <h3>Qué correos salen</h3>
+          <div id="mail-kinds" class="mail-kinds"></div>
+          <label class="mail-field">Avisos del NOC a<input id="mail-notify" type="text" placeholder="todos los administradores" aria-describedby="mail-notify-help"></label>
+          <p class="muted small" id="mail-notify-help">Separados por comas. Vacío: todos los administradores.</p>
+          <label class="mail-field">Nombre del remitente<input id="mail-sender" type="text" maxlength="80"></label>
+          <label class="mail-field">Responder a<input id="mail-reply" type="email" placeholder="(el mismo remitente)"></label>
+          <button class="btn primary" id="mail-save" type="button">Guardar</button>
+        </div>
+        <div class="card">
+          <h3>Probar y ver</h3>
+          <div class="row"><input id="mail-test-to" type="email" placeholder="tu correo" aria-label="Correo de prueba"><button class="btn" id="mail-test" type="button">Enviar prueba</button></div>
+          <label class="mail-field">Vista previa<select id="mail-preview-kind"></select></label>
+          <iframe id="mail-preview" class="mail-preview" title="Vista previa del correo" sandbox=""></iframe>
+        </div>
+      </div>
+      <table class="table" id="mail-log" hidden><thead><tr><th>Cuándo</th><th>Tipo</th><th>Para</th><th>Estado</th></tr></thead><tbody></tbody></table>
       <h2>Solicitudes de demo</h2>
       <table class="table" id="leads-table"><thead><tr><th>Nombre</th><th>Email</th><th>Empresa</th><th>Jugadores</th><th>Mensaje</th><th>Recibida</th></tr></thead><tbody></tbody></table>
     </main>
@@ -312,6 +360,7 @@
   <script src="js/padsui.js"></script>
   <script src="js/extras.js"></script>
   <script src="js/lan.js"></script>
+  <script src="js/adminmail.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
