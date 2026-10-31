@@ -156,6 +156,16 @@
       <table class="table" id="nodes-table"><thead><tr><th>Nodo</th><th>Estado</th><th>GPU</th><th>Plataformas</th><th>Carga</th><th>Último latido</th><th></th></tr></thead><tbody></tbody></table>
       <h2>Sesiones activas</h2>
       <table class="table" id="sessions-table"><thead><tr><th>Jugador</th><th>Juego</th><th>Estado</th><th>Nodo</th><th>Desde</th><th></th></tr></thead><tbody></tbody></table>
+      <h2>Usuarios</h2>
+      <form class="card user-form" id="user-form">
+        <input id="user-email" type="email" placeholder="correo@ejemplo.com" aria-label="Email del usuario nuevo" required>
+        <input id="user-pass" type="text" placeholder="contraseña (mín. 8)" aria-label="Contraseña" minlength="8" required autocomplete="off">
+        <button class="btn quiet" id="user-gen" type="button" title="Generar una contraseña">Generar</button>
+        <label class="user-check"><input id="user-admin" type="checkbox"> Administrador</label>
+        <label class="user-check">Partidas a la vez <input id="user-max" type="number" min="1" max="16" value="1"></label>
+        <button class="btn primary" type="submit">Crear cuenta</button>
+      </form>
+      <table class="table" id="users-table"><thead><tr><th>Usuario</th><th>Rol</th><th>Partidas a la vez</th><th>Alta</th><th></th></tr></thead><tbody></tbody></table>
       <h2>Acceso desde Internet</h2>
       <div class="card" id="sys-card"><p class="muted">Cargando…</p></div>
       <h2>Correo</h2>
@@ -361,6 +371,7 @@
   <script src="js/extras.js"></script>
   <script src="js/lan.js"></script>
   <script src="js/adminmail.js"></script>
+  <script src="js/adminusers.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

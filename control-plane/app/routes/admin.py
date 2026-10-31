@@ -37,10 +37,16 @@ class GamePatch(BaseModel):
 
 
 class UserIn(BaseModel):
-    email: str
-    password: str = Field(min_length=8)
+    email: str = Field(min_length=3, max_length=255)
+    password: str = Field(min_length=8, max_length=256)
     is_admin: bool = False
-    max_sessions: int = 1
+    max_sessions: int = Field(default=1, ge=1, le=16)
+
+
+class UserPatch(BaseModel):
+    is_admin: bool | None = None
+    max_sessions: int | None = Field(default=None, ge=1, le=16)
+    password: str | None = Field(default=None, min_length=8, max_length=256)
 
 
 def platforms_field(ps: list[str]) -> str:
@@ -146,6 +152,8 @@ async def patch_game(game_id: str, body: GamePatch, db: AsyncSession = Depends(g
 @router.post("/users", status_code=201)
 async def add_user(body: UserIn, db: AsyncSession = Depends(get_db)):
     email = body.email.lower().strip()
+    if "@" not in email or " " in email:
+        raise HTTPException(422, "Revisa el email: no parece válido")
     if await db.scalar(select(User).where(User.email == email)):
         raise HTTPException(409, "Ese email ya existe")
     u = User(email=email, password_hash=hash_password(body.password), is_admin=body.is_admin, max_sessions=body.max_sessions)
@@ -158,7 +166,61 @@ async def add_user(body: UserIn, db: AsyncSession = Depends(get_db)):
 @router.get("/users")
 async def list_users(db: AsyncSession = Depends(get_db)):
     users = (await db.scalars(select(User).order_by(User.email))).all()
-    return [{"id": u.id, "email": u.email, "is_admin": u.is_admin, "max_sessions": u.max_sessions} for u in users]
+    return [{"id": u.id, "email": u.email, "is_admin": u.is_admin, "max_sessions": u.max_sessions,
+             "created_at": u.created_at.isoformat() if u.created_at else None} for u in users]
+
+
+@router.patch("/users/{user_id}")
+async def patch_user(user_id: str, body: UserPatch, me: User = Depends(admin_user), db: AsyncSession = Depends(get_db)):
+    u = await db.get(User, user_id)
+    if u is None:
+        raise HTTPException(404, "No existe ese usuario")
+    if body.is_admin is False and u.id == me.id:
+        raise HTTPException(409, "No puedes quitarte a ti mismo el permiso de administrador")
+    if body.is_admin is not None:
+        u.is_admin = body.is_admin
+    if body.max_sessions is not None:
+        u.max_sessions = body.max_sessions
+    if body.password:
+        u.password_hash = hash_password(body.password)
+    await db.commit()
+    if body.password:
+        mail.queue("password_changed", u.email, {"email": u.email})
+    return {"id": u.id, "email": u.email, "is_admin": u.is_admin, "max_sessions": u.max_sessions}
+
+
+@router.delete("/users/{user_id}")
+async def delete_user(user_id: str, me: User = Depends(admin_user), db: AsyncSession = Depends(get_db)):
+    u = await db.get(User, user_id)
+    if u is None:
+        raise HTTPException(404, "No existe ese usuario")
+    if u.id == me.id:
+        raise HTTPException(409, "No puedes borrar tu propia cuenta")
+    live = (await db.scalars(select(Session).where(Session.user_id == u.id, Session.status.in_(ACTIVE_STATES)))).all()
+    for s in live:  # sus partidas se cierran guardando, como al pulsar «Cerrar» en el panel
+        await stop_session(db, s)
+    await db.delete(u)
+    await db.commit()
+    return {"ok": True}
+
+
+@router.post("/users/{user_id}/reset")
+async def send_reset(user_id: str, db: AsyncSession = Depends(get_db)):
+    """Manda al usuario el enlace para elegir contraseña (el mismo de «¿Has olvidado la contraseña?»)"""
+    import secrets as _secrets
+
+    u = await db.get(User, user_id)
+    if u is None:
+        raise HTTPException(404, "No existe ese usuario")
+    if not mail.configured():
+        raise HTTPException(409, "Sin correo configurado: ponle tú una contraseña nueva")
+    token = _secrets.token_urlsafe(32)
+    await bus.r().set(f"reset:{sha256(token)}", u.id, ex=settings.reset_ttl_minutes * 60)
+    link = f"{settings.public_url.rstrip('/')}/#/reset?token={token}"
+    res = await mail.send("reset", u.email, {"email": u.email, "link": link, "minutes": settings.reset_ttl_minutes})
+    if res["status"] != "sent":
+        raise HTTPException(502, res["error"] or "No se ha enviado")
+    return {"ok": True}
 
 
 @router.get("/sessions")

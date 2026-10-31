@@ -202,6 +202,45 @@ cmd_turn_cloudflare() {
   ok "El vídeo usará el TURN de Cloudflare"
 }
 
+# Cuentas desde la consola del máster (lo mismo que el panel → Usuarios)
+cmd_user() {
+  need_root; is_orch || die "Va en el máster (orquestador)"
+  local sub="${1:-list}" email="${2:-}" pass="" admin=false max=1 id
+  if [ $# -ge 2 ]; then shift 2; else shift $#; fi
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --admin) admin=true ;;
+      --password) pass="$2"; shift ;;
+      --max-sessions) max="$2"; shift ;;
+      *) die "Opción desconocida: $1" ;;
+    esac
+    shift
+  done
+  user_id() { api GET /api/admin/users | jq -r --arg e "$(echo "$1" | tr '[:upper:]' '[:lower:]')" '.[] | select(.email == $e) | .id'; }
+  case "$sub" in
+    list)
+      api GET /api/admin/users | jq -r '.[] | "\(if .is_admin then "admin  " else "jugador" end)  \(.email)  (\(.max_sessions) a la vez)"' ;;
+    add)
+      [ -n "$email" ] || die "Uso: cloudplay user add CORREO [--admin] [--password CLAVE] [--max-sessions N]"
+      [ -n "$pass" ] || pass=$(openssl rand -base64 18 | tr -d '/+=\n' | cut -c1-12)
+      api POST /api/admin/users "$(jq -nc --arg e "$email" --arg p "$pass" --argjson a "$admin" --argjson m "$max" \
+        '{email: $e, password: $p, is_admin: $a, max_sessions: $m}')" | jq -e .id >/dev/null || die "No se pudo crear (¿ya existe?)"
+      ok "Cuenta creada: $email · contraseña: $pass$( [ "$admin" = true ] && echo " · administrador")" ;;
+    passwd)
+      id=$(user_id "$email"); [ -n "$id" ] || die "No existe $email"
+      [ -n "$pass" ] || pass=$(openssl rand -base64 18 | tr -d '/+=\n' | cut -c1-12)
+      api PATCH "/api/admin/users/$id" "$(jq -nc --arg p "$pass" '{password: $p}')" >/dev/null
+      ok "Contraseña de $email: $pass" ;;
+    admin)
+      id=$(user_id "$email"); [ -n "$id" ] || die "No existe $email"
+      api PATCH "/api/admin/users/$id" '{"is_admin": true}' >/dev/null && ok "$email ya es administrador" ;;
+    del)
+      id=$(user_id "$email"); [ -n "$id" ] || die "No existe $email"
+      api DELETE "/api/admin/users/$id" >/dev/null && ok "Cuenta $email borrada" ;;
+    *) die "Uso: cloudplay user list | add CORREO [--admin] [--password C] | passwd CORREO [--password C] | admin CORREO | del CORREO" ;;
+  esac
+}
+
 cmd_drain() {
   is_node || die "Solo en un nodo gaming"
   need_root
@@ -239,6 +278,7 @@ case "${1:-help}" in
   join-token) cmd_join_token ;;
   node-command) cmd_node_command ;;
   tunnel) shift; cmd_tunnel "$@" ;;
+  user|users) shift; cmd_user "$@" ;;
   cloudflare) shift; need_root; is_orch || die "Va en el máster (orquestador)"; exec bash "$DEST/deploy/install/cloudflare.sh" "$@" ;;
   mail) shift; need_root; is_orch || die "Va en el máster (orquestador)"; exec bash "$DEST/deploy/install/mail.sh" "$@" ;;
   turn-cloudflare) shift; cmd_turn_cloudflare "$@" ;;
@@ -255,6 +295,7 @@ cloudplay — operar CloudPlay en esta máquina
   update [--version V]   actualizar sin cortar el servicio (o update /ruta|tgz [--no-build])
   backup | restore F     copia de base de datos y partidas guardadas (diaria automática a las 4:20)
   credentials            URL, administrador y token de unión
+  user list|add|passwd|admin|del   cuentas de jugador y de administrador (también en el panel → Usuarios)
   join-token             token para unir nodos
   node-command           línea para instalar un nodo nuevo
   cloudflare [status|off] publicar en Internet con Cloudflare (túnel, DNS y TURN solos, con un token de API)

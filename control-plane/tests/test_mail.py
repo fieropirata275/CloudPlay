@@ -247,3 +247,31 @@ def test_mail(client):
     s = c.get("/api/admin/system", headers=H).json()
     assert set(s) >= {"exposure", "public_url", "lan_url", "turn", "mail"}
     settings.mail_provider = ""
+
+
+def test_users_admin(client):
+    """Usuarios desde el panel: crear, cambiar, mandar el enlace de contraseña y borrar"""
+    c = client
+    use_resend(c)
+    H = login(c, "admin@test.local", "supersecret")
+    me = c.get("/api/auth/me", headers=H).json()
+    r = c.post("/api/admin/users", json={"email": "Nuevo@Bar.com", "password": "contraseña1", "max_sessions": 2}, headers=H)
+    assert r.status_code == 201, r.text
+    uid = r.json()["id"]
+    assert c.post("/api/admin/users", json={"email": "sinarroba", "password": "contraseña1"}, headers=H).status_code == 422
+    assert c.post("/api/admin/users", json={"email": "nuevo@bar.com", "password": "contraseña1"}, headers=H).status_code == 409
+    users = {u["email"]: u for u in c.get("/api/admin/users", headers=H).json()}
+    assert users["nuevo@bar.com"]["max_sessions"] == 2 and users["nuevo@bar.com"]["created_at"]
+    r = c.patch(f"/api/admin/users/{uid}", json={"is_admin": True, "password": "otra-clave-1"}, headers=H)
+    assert r.json()["is_admin"] is True
+    login(c, "nuevo@bar.com", "otra-clave-1")
+    assert c.patch(f"/api/admin/users/{me['id']}", json={"is_admin": False}, headers=H).status_code == 409
+    n0 = len(SENT)
+    assert c.post(f"/api/admin/users/{uid}/reset", headers=H).json() == {"ok": True}
+    wait_sent(n0 + 1)
+    assert any(m["subject"].startswith("Recupera") and m["to"] == ["nuevo@bar.com"] for m in SENT[n0:])
+    assert c.delete(f"/api/admin/users/{me['id']}", headers=H).status_code == 409
+    assert c.delete(f"/api/admin/users/{uid}", headers=H).json() == {"ok": True}
+    assert c.post("/api/auth/login", json={"email": "nuevo@bar.com", "password": "otra-clave-1"}).status_code == 401
+    settings.mail_provider = ""
+    assert c.post(f"/api/admin/users/{me['id']}/reset", headers=H).status_code == 409
