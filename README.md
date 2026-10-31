@@ -41,6 +41,9 @@ clientes ──WebRTC (H.264/Opus + input)──▶ nodos GPU (un contenedor por
   - Transiciones entre pantallas, barra superior que se condensa con el scroll (con barra de progreso de Motion `scroll`), carátulas que aparecen con `inView`, inclinación con reflejo al pasar el ratón.
   - Código de la tele tipo split-flap, palabra que rota en el login, menú y panel con entrada en cascada, pista de arranque que se llena por pasos.
   - Efectos inspirados en Skiper UI portados a JS sin React: texto que rueda, desenfoque progresivo y palabra rotatoria.
+- **Proxmox en un comando**: en el shell del host, `get.sh proxmox cluster --nodes 3` crea un máster y 3 nodos
+  gaming en VMs, con red, GPUs en passthrough y CloudPlay ya instalado y unido (imagen `cloudplay-pve` de GHCR).
+  Sin dominio, la plataforma va por IP en la red local (`http://IP` y `https://IP`). Ver `docs/DEPLOY.md`.
 - **Arranque "de firmware"**: al encender cualquier consola sale primero la animación de CloudPlay por la propia
   señal de vídeo de la consola (como un firmware custom): el logo de metal tintado del color de cada consola gira, se
   deshace en partículas que dibujan la silueta de la consola y da paso al arranque de verdad (BIOS / juego), con su

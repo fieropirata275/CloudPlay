@@ -179,7 +179,13 @@
   Player.prototype._connectSignal = function (attempt) {
     if (this.closed) return;
     var self = this;
-    var url = this.session.signal_url + '?role=client&token=' + encodeURIComponent(CP.token());
+    var sig = this.session.signal_url;
+    // Modo red local: la API anuncia ws://IP, pero si la página llegó por https://IP el navegador no deja mezclar
+    if (sig.indexOf('ws://') === 0 && root.location && root.location.protocol === 'https:' &&
+        sig.split('/')[2].split(':')[0] === root.location.hostname) {
+      sig = 'wss://' + root.location.host + '/' + sig.split('/').slice(3).join('/');
+    }
+    var url = sig + '?role=client&token=' + encodeURIComponent(CP.token());
     this.o.onStatus(attempt ? 'Reconectando…' : 'Arrancando la consola en la nube…', 'loading');
     if (attempt) this._stage('reconnecting');
     var ws = this.ws = new WebSocket(url);

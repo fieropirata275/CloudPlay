@@ -7,6 +7,8 @@
 #     sudo ./install.sh --role node --cp-url https://play.empresa.com --join-token TOKEN
 #   Todo en una máquina:
 #     sudo ./install.sh --role all --domain play.empresa.com
+#   Sin dominio (modo red local): se entra por la IP, http://IP y https://IP (certificado propio de la red)
+#     sudo ./install.sh --role orchestrator [--lan-ip 192.168.1.50]
 #
 # Es idempotente: se puede volver a lanzar con los mismos argumentos (no cambia secretos ya generados).
 # Lo usan también la ISO (primer arranque), las plantillas de Proxmox y el instalador de nodos del orquestador.
@@ -18,7 +20,7 @@ ETC=/etc/cloudplay
 LOG=/var/log/cloudplay-install.log
 
 ROLE="" DOMAIN="" LANDING_DOMAIN="" TUNNEL_TOKEN="" CF_TURN_KEY_ID="" CF_TURN_TOKEN=""
-ADMIN_EMAIL="" ADMIN_PASSWORD="" CP_URL="" JOIN_TOKEN="" NODE_NAME="" CAPACITY="auto"
+LAN_IP="" ADMIN_EMAIL="" ADMIN_PASSWORD="" CP_URL="" JOIN_TOKEN="" NODE_NAME="" CAPACITY="auto"
 PLATFORMS="ps2,gc,wii" GPU="auto" LIBRARY_DIR=/srv/cloudplay/library BIOS_DIR=/srv/cloudplay/bios
 FIREWALL=1 WITH_LANDING=0 REBOOT_OK=0 SKIP_BUILD=0 DIRECT_PORTS=yes
 TAG="${CLOUDPLAY_TAG:-local}"
@@ -30,7 +32,8 @@ usage() {
   cat <<'EOF'
 
 Opciones del orquestador:
-  --domain DOMINIO            dominio de la plataforma (play.empresa.com)
+  --domain DOMINIO            dominio de la plataforma (play.empresa.com); sin él, modo red local por IP
+  --lan-ip IP                 IP del modo red local (por defecto, la de la interfaz con la ruta por defecto)
   --landing-domain DOMINIO    dominio de la web comercial (opcional)
   --tunnel-token TOKEN        publica todo con Cloudflare Tunnel (sin abrir puertos)
   --cf-turn-key-id ID         TURN de Cloudflare para el vídeo (recomendado con túnel)
@@ -39,7 +42,7 @@ Opciones del orquestador:
   --with-landing              compila también la web comercial (usa un contenedor de Node)
 Opciones del nodo:
   --cp-url URL                URL del orquestador (https://play.empresa.com)
-  --join-token TOKEN          token de unión (cloudplay join-token en el orquestador)
+  --join-token TOKEN          token de unión (cloudplay join-token en el orquestador); en el orquestador, lo fija
   --name NOMBRE               nombre del nodo (por defecto, el hostname)
   --capacity N|auto           partidas simultáneas
   --platforms ps2,gc,wii
@@ -58,6 +61,7 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --role) ROLE="$2"; shift ;;
     --domain) DOMAIN="$2"; shift ;;
+    --lan-ip) LAN_IP="$2"; shift ;;
     --landing-domain) LANDING_DOMAIN="$2"; shift ;;
     --tunnel-token) TUNNEL_TOKEN="$2"; shift ;;
     --cf-turn-key-id) CF_TURN_KEY_ID="$2"; shift ;;
@@ -108,12 +112,24 @@ ensure_secret() {
   cur=$(get_env "$1" "$2")
   if [ -z "$cur" ] || [[ "$cur" == CAMBIA_ESTO* ]]; then set_env "$1" "$2" "$(rand "${3:-40}")"; fi
 }
-lan_ip() { hostname -I 2>/dev/null | awk '{print $1}'; }
+# IP de la red local: la de la interfaz por la que sale la ruta por defecto (no la de docker0)
+lan_ip() {
+  local ip
+  ip=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i = 1; i < NF; i++) if ($i == "src") {print $(i + 1); exit}}')
+  echo "${ip:-$(hostname -I 2>/dev/null | awk '{print $1}')}"
+}
 # Con imágenes de un registro (GHCR) se descargan; si no, se compilan aquí
 from_registry() { [ "$IMAGES" != "cloudplay/" ]; }
 
 [ "$(id -u)" -eq 0 ] || die "Ejecútalo como root (sudo)."
 case "$ROLE" in orchestrator|node|all) ;; *) usage; die "Indica --role orchestrator, node o all" ;; esac
+# Modo red local: orquestador sin dominio. La plataforma vive en la IP (http y https con la CA interna de Caddy)
+LAN=0
+if [ "$ROLE" != node ] && [ -z "$DOMAIN" ]; then
+  LAN=1
+  LAN_IP="${LAN_IP:-$(lan_ip)}"
+  [ -n "$LAN_IP" ] || die "Sin dominio ni IP de red local: usa --domain o --lan-ip"
+fi
 exec > >(tee -a "$LOG") 2>&1
 trap 'die "Falló en la línea $LINENO. Registro completo: $LOG"' ERR
 say "CloudPlay · instalando rol «$ROLE» ($(date -Is))"
@@ -166,13 +182,15 @@ install -m 0755 "$DEST/deploy/install/ups/cloudplay-ups" /usr/local/bin/cloudpla
 
 # Animación de arranque con la marca y el rol de la máquina (master / slave)
 say "Marca de arranque"
-bash "$DEST/deploy/branding/apply.sh" "$ROLE" "${DOMAIN:-$(echo "$CP_URL" | sed 's#^[a-z]*://##')}" \
+if [ "$LAN" = 1 ]; then BRAND_URL="http://$LAN_IP"; elif [ -n "$DOMAIN" ]; then BRAND_URL="https://$DOMAIN"; else BRAND_URL="$CP_URL"; fi
+bash "$DEST/deploy/branding/apply.sh" "$ROLE" "$BRAND_URL" \
   || warn "No se pudo aplicar la animación de arranque (no afecta a CloudPlay)"
 
 # Cómo se instaló (sin secretos: esos quedan en .env / worker.env). Lo reutilizan `cloudplay update`
 # y la continuación tras reiniciar por el driver de la GPU.
 {
   printf '%q %q ' --role "$ROLE"
+  if [ "$LAN" = 1 ]; then printf '%q %q ' --lan-ip "$LAN_IP"; fi
   for kv in "--domain=$DOMAIN" "--landing-domain=$LANDING_DOMAIN" "--cp-url=$CP_URL" "--name=$NODE_NAME" \
             "--capacity=$CAPACITY" "--platforms=$PLATFORMS" "--gpu=$GPU" "--library=$LIBRARY_DIR" "--bios=$BIOS_DIR" \
             "--direct-ports=$DIRECT_PORTS" "--images=$IMAGES" "--version=$TAG"; do
@@ -209,23 +227,41 @@ EOF
 
 # ================================================================== ORQUESTADOR
 install_orchestrator() {
-  [ -n "$DOMAIN" ] || die "Falta --domain (p. ej. play.empresa.com)"
-  local env="$DEST/.env" tunnel=0 profiles="" landing
+  local env="$DEST/.env" tunnel=0 profiles="" landing base
+  if [ "$LAN" = 1 ]; then DOMAIN="$LAN_IP"; fi
   [ -f "$env" ] || cp "$DEST/.env.example" "$env"
   chmod 600 "$env"
   if [ -n "$TUNNEL_TOKEN" ]; then set_env "$env" TUNNEL_TOKEN "$TUNNEL_TOKEN"; fi
-  if [ -n "$(get_env "$env" TUNNEL_TOKEN)" ]; then tunnel=1; fi
+  if [ -n "$(get_env "$env" TUNNEL_TOKEN)" ] && [ "$LAN" = 0 ]; then tunnel=1; fi
 
   set_env "$env" CP_DOMAIN "$DOMAIN"
   landing="${LANDING_DOMAIN:-$(get_env "$env" LANDING_DOMAIN)}"
   if [ -z "$landing" ] || [ "$landing" = www.example.com ]; then landing="www.${DOMAIN#*.}"; fi
+  if [ "$LAN" = 1 ]; then landing=landing.localhost; fi
   set_env "$env" LANDING_DOMAIN "$landing"
   for k in CP_JWT_SECRET TURN_SECRET POSTGRES_PASSWORD CP_JOIN_TOKEN S3_SECRET_KEY; do ensure_secret "$env" "$k"; done
   if [ -n "$ADMIN_EMAIL" ]; then set_env "$env" CP_ADMIN_EMAIL "$ADMIN_EMAIL"; fi
-  if [ "$(get_env "$env" CP_ADMIN_EMAIL)" = admin@example.com ]; then set_env "$env" CP_ADMIN_EMAIL "admin@${DOMAIN#*.}"; fi
+  if [ "$(get_env "$env" CP_ADMIN_EMAIL)" = admin@example.com ]; then
+    if [ "$LAN" = 1 ]; then set_env "$env" CP_ADMIN_EMAIL admin@cloudplay.lan; else set_env "$env" CP_ADMIN_EMAIL "admin@${DOMAIN#*.}"; fi
+  fi
+  # El orquestador puede nacer con un token de unión ya decidido (el clúster de Proxmox se lo pasa a sus nodos)
+  if [ -n "$JOIN_TOKEN" ]; then set_env "$env" CP_JOIN_TOKEN "$JOIN_TOKEN"; fi
   if [ -n "$ADMIN_PASSWORD" ]; then set_env "$env" CP_ADMIN_PASSWORD "$ADMIN_PASSWORD"; else ensure_secret "$env" CP_ADMIN_PASSWORD 16; fi
   if [ -n "$CF_TURN_KEY_ID" ]; then set_env "$env" CP_CF_TURN_KEY_ID "$CF_TURN_KEY_ID"; fi
   if [ -n "$CF_TURN_TOKEN" ]; then set_env "$env" CP_CF_TURN_API_TOKEN "$CF_TURN_TOKEN"; fi
+
+  # Modo red local: http://IP sin saltar a https (nodos, teles) y https://IP con certificado propio de la red
+  if [ "$LAN" = 1 ]; then
+    set_env "$env" CP_PUBLIC_URL "http://$LAN_IP"
+    set_env "$env" CP_LAN_TLS_SITE "https://$LAN_IP"
+    set_env "$env" CP_AUTO_HTTPS disable_redirects
+    base="http://$LAN_IP"
+  else
+    set_env "$env" CP_PUBLIC_URL ""
+    set_env "$env" CP_LAN_TLS_SITE ""
+    set_env "$env" CP_AUTO_HTTPS ""
+    base="https://$DOMAIN"
+  fi
 
   if [ "$tunnel" = 1 ]; then
     # Cloudflare pone el TLS y llega a Caddy por HTTP; nada escucha hacia Internet
@@ -242,9 +278,14 @@ install_orchestrator() {
     fi
     set_env "$env" CP_NODE_S3_ENDPOINT "https://s3.$DOMAIN"
   else
-    set_env "$env" CP_SITE ""
+    if [ "$LAN" = 1 ]; then
+      set_env "$env" CP_SITE ":80"
+      set_env "$env" PUBLIC_IP "$LAN_IP"
+    else
+      set_env "$env" CP_SITE ""
+      set_env "$env" PUBLIC_IP "$(curl -fsS -m 5 https://api.ipify.org 2>/dev/null || lan_ip)"
+    fi
     set_env "$env" LANDING_SITE ""
-    set_env "$env" PUBLIC_IP "$(curl -fsS -m 5 https://api.ipify.org 2>/dev/null || lan_ip)"
     set_env "$env" S3_BIND "$(lan_ip)"
     if [ -n "$(get_env "$env" CP_CF_TURN_KEY_ID)" ]; then
       set_env "$env" CP_TURN_PROVIDER cloudflare
@@ -268,7 +309,7 @@ install_orchestrator() {
   fi
   mkdir -p "$DEST/landing/out"
 
-  cloudplay_dist "$DOMAIN"
+  cloudplay_dist "$base"
 
   if [ "$FIREWALL" = 1 ]; then
     say "Cortafuegos"
@@ -312,7 +353,7 @@ install_orchestrator() {
 
 # Paquete que el orquestador sirve en /install/: así un nodo se instala con una sola línea
 cloudplay_dist() {
-  local domain="$1" dist="$DEST/dist"
+  local base="$1" dist="$DEST/dist"
   mkdir -p "$dist"
   chmod 755 "$dist"
   tar -C "$DEST" --exclude='./.env' --exclude='./dist' --exclude='./landing/node_modules' --exclude='./landing/.next' \
@@ -321,13 +362,13 @@ cloudplay_dist() {
   mv "$dist/cloudplay.tar.gz.tmp" "$dist/cloudplay.tar.gz"
   cat > "$dist/node.sh" <<EOF
 #!/usr/bin/env bash
-# Instala un nodo gaming de CloudPlay y lo une a https://$domain
-#   curl -fsSL https://$domain/install/node.sh | sudo bash -s -- --join-token TOKEN [--gpu nvidia] [--capacity 4]
+# Instala un nodo gaming de CloudPlay y lo une a $base
+#   curl -fsSL $base/install/node.sh | sudo bash -s -- --join-token TOKEN [--gpu nvidia] [--capacity 4]
 set -euo pipefail
 [ "\$(id -u)" -eq 0 ] || { echo "Ejecútalo con sudo"; exit 1; }
 TMP=\$(mktemp -d)
-curl -fsSL "https://$domain/install/cloudplay.tar.gz" | tar -xz -C "\$TMP"
-exec bash "\$TMP/deploy/install/install.sh" --role node --cp-url "https://$domain" --images "$IMAGES" --version "$TAG" "\$@"
+curl -fsSL "$base/install/cloudplay.tar.gz" | tar -xz -C "\$TMP"
+exec bash "\$TMP/deploy/install/install.sh" --role node --cp-url "$base" --images "$IMAGES" --version "$TAG" "\$@"
 EOF
   chmod 644 "$dist/node.sh" "$dist/cloudplay.tar.gz"
 }
@@ -359,21 +400,28 @@ EOF
 }
 
 summary_orchestrator() {
-  local env="$DEST/.env" f=/root/cloudplay-credenciales.txt d l
+  local env="$DEST/.env" f=/root/cloudplay-credenciales.txt d l u extra=""
   d=$(get_env "$env" CP_DOMAIN)
   l=$(get_env "$env" LANDING_DOMAIN)
+  u="https://$d"
+  if [ "$LAN" = 1 ]; then
+    u="http://$d"
+    extra="También por HTTPS: https://$d (certificado propio de la red: el navegador avisa la primera vez;
+hace falta para micro, cámara y Wiimote por WebHID desde el navegador)
+"
+  fi
   (
     umask 077
     cat > "$f" <<EOF
 CloudPlay · orquestador
 =======================
-Plataforma:      https://$d
-Panel:           https://$d/#/admin
+Plataforma:      $u
+${extra}Panel:           $u/#/admin
 Administrador:   $(get_env "$env" CP_ADMIN_EMAIL)
 Contraseña:      $(get_env "$env" CP_ADMIN_PASSWORD)
 
 Añadir un nodo gaming (en la máquina con GPU):
-  curl -fsSL https://$d/install/node.sh | sudo bash -s -- --join-token $(get_env "$env" CP_JOIN_TOKEN)
+  curl -fsSL $u/install/node.sh | sudo bash -s -- --join-token $(get_env "$env" CP_JOIN_TOKEN)
 
 Token de unión de nodos: $(get_env "$env" CP_JOIN_TOKEN)
 EOF
@@ -431,7 +479,7 @@ install_node() {
     if [ -z "$JOIN_TOKEN" ]; then JOIN_TOKEN=$(get_env "$wenv" JOIN_TOKEN); fi
   fi
   if [ "$ROLE" = all ]; then
-    CP_URL="https://$DOMAIN"
+    if [ "$LAN" = 1 ]; then CP_URL="http://$LAN_IP"; else CP_URL="https://$DOMAIN"; fi
     JOIN_TOKEN=$(get_env "$DEST/.env" CP_JOIN_TOKEN)
   fi
   [ -n "$CP_URL" ] || die "Falta --cp-url (https://play.empresa.com)"

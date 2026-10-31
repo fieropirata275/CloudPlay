@@ -31,6 +31,8 @@ jobs:
           - { name: agent, context: worker/agent, file: worker/agent/Dockerfile }
           - { name: session, context: worker/session, file: worker/session/Dockerfile }
           - { name: web, context: ., file: deploy/docker/web.Dockerfile }
+          # Despliegue en Proxmox (get.sh la baja en el host sin Docker y ejecuta su script)
+          - { name: pve, context: deploy/proxmox, file: deploy/proxmox/Dockerfile }
     steps:
       - uses: actions/checkout@v4
       - name: Espacio en disco (la imagen de sesión compila emuladores)
@@ -57,6 +59,7 @@ jobs:
           file: ${{ matrix.file }}
           platforms: linux/amd64
           push: true
+          build-args: VERSION=${{ env.VERSION }}
           tags: |
             ${{ steps.img.outputs.ref }}:${{ env.VERSION }}
             ${{ steps.img.outputs.ref }}:latest
@@ -94,12 +97,14 @@ jobs:
           curl -fsSL https://github.com/$GITHUB_REPOSITORY/releases/latest/download/get.sh | sudo bash -s -- orchestrator --domain play.empresa.com
           # Nodo gaming
           curl -fsSL https://github.com/$GITHUB_REPOSITORY/releases/latest/download/get.sh | sudo bash -s -- node --cp-url https://play.empresa.com --join-token TOKEN
+          # Proxmox VE: máster + 3 nodos en VMs, todo configurado (en el shell del host de Proxmox)
+          curl -fsSL https://github.com/$GITHUB_REPOSITORY/releases/latest/download/get.sh | bash -s -- proxmox cluster --nodes 3
           \`\`\`
 
           **App de escritorio para jugadores** (Wiimote, Balance Board, micro y cámara sin pedir permisos): Windows
           (instalador o portable), macOS (.dmg) y Linux (.AppImage / .deb), más abajo en esta página.
 
-          Imágenes: \`ghcr.io/$OWNER/cloudplay-{control-plane,agent,session,web}:$VERSION\` · Guía: [docs/DEPLOY.md](https://github.com/$GITHUB_REPOSITORY/blob/$VERSION/docs/DEPLOY.md)
+          Imágenes: \`ghcr.io/$OWNER/cloudplay-{control-plane,agent,session,web,pve}:$VERSION\` · Guía: [docs/DEPLOY.md](https://github.com/$GITHUB_REPOSITORY/blob/$VERSION/docs/DEPLOY.md)
           NOTES
           gh release create "$VERSION" dist/cloudplay.tar.gz dist/get.sh dist/SHA256SUMS \
             --title "CloudPlay $VERSION" --notes-file notes.md --target "$GITHUB_SHA" \

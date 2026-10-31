@@ -21,7 +21,7 @@ jobs:
         run: |
           sudo apt-get install -y -qq shellcheck
           shellcheck -S warning deploy/get.sh deploy/install/install.sh deploy/install/cloudplay deploy/install/continue.sh \
-            deploy/install/ups/cloudplay-ups deploy/iso/build-iso.sh deploy/iso/firstboot.sh deploy/proxmox/cloudplay-pve.sh \
+            deploy/install/ups/cloudplay-ups deploy/iso/build-iso.sh deploy/iso/firstboot.sh deploy/proxmox/cloudplay-pve.sh tests/proxmox/test_cluster.sh \
             deploy/branding/apply.sh
       - uses: azure/setup-helm@v4
       - name: Chart de Helm
@@ -38,6 +38,14 @@ jobs:
             gstreamer1.0-x gir1.2-gstreamer-1.0 gir1.2-gst-plugins-base-1.0 python3-gi >/dev/null
           /usr/bin/python3 worker/session/tests/test_bootsplash.py | tee /tmp/boot.log
           grep -q BOOTSPLASH_OK /tmp/boot.log
+      - name: Clúster de Proxmox en un comando (qm/pvesh/pvesm simulados)
+        run: bash tests/proxmox/test_cluster.sh | tail -n 3
+      - name: Caddy en modo dominio y en modo red local (por IP)
+        run: |
+          docker run --rm -e CP_SITE=play.example.com -v "$PWD/deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.8 \
+            caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+          docker run --rm -e CP_SITE=:80 -e CP_LAN_TLS_SITE=https://192.168.1.50 -e CP_AUTO_HTTPS=disable_redirects \
+            -v "$PWD/deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.8 caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
       - name: LOCAL LAN MODE de extremo a extremo (hub + DHCP + ARP + aislamiento de salas)
         run: python tests/lan/run_lan.py
       - name: Mandos (perfiles, hat y asistente con mandos simulados)

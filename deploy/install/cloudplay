@@ -181,7 +181,10 @@ cmd_join_token() { is_orch || die "Solo en el orquestador"; get_env "$ENV" CP_JO
 
 cmd_node_command() {
   is_orch || die "Solo en el orquestador"
-  echo "curl -fsSL https://$(get_env "$ENV" CP_DOMAIN)/install/node.sh | sudo bash -s -- --join-token $(get_env "$ENV" CP_JOIN_TOKEN)"
+  local base
+  base=$(get_env "$ENV" CP_PUBLIC_URL)  # modo red local: http://IP
+  [ -n "$base" ] || base="https://$(get_env "$ENV" CP_DOMAIN)"
+  echo "curl -fsSL $base/install/node.sh | sudo bash -s -- --join-token $(get_env "$ENV" CP_JOIN_TOKEN)"
 }
 
 cmd_tunnel() {

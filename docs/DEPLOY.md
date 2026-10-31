@@ -94,6 +94,53 @@ curl -fsSL https://play.empresa.com/install/node.sh | sudo bash -s -- --join-tok
 
 `sudo cloudplay node-command` en el orquestador imprime esa línea con el token ya puesto.
 
+### Sin dominio: modo red local (por IP)
+
+Si no pasas `--domain`, el orquestador se queda en **modo red local**: la plataforma se abre por la IP de la máquina.
+
+```bash
+curl -fsSL https://github.com/fieropirata275/CloudPlay/releases/latest/download/get.sh | sudo bash -s -- orchestrator [--lan-ip 192.168.1.50]
+```
+
+- `http://IP`: entra cualquiera de la red (teles, nodos). No salta a HTTPS.
+- `https://IP`: con un certificado de la CA interna de Caddy. El navegador avisa la primera vez. Hace falta HTTPS
+  para usar desde el navegador el micro, la cámara y el Wiimote por WebHID (la app de escritorio no lo necesita).
+- Los nodos se unen con `--cp-url http://IP`. `sudo cloudplay node-command` ya lo imprime así.
+- Fija la IP del orquestador (reserva DHCP en el router o IP estática): los nodos la llevan apuntada.
+
+## Opción C0 · Proxmox VE: todo el clúster en un comando
+
+En el shell del host de Proxmox (Nodo → Shell), como root:
+
+```bash
+curl -fsSL https://github.com/fieropirata275/CloudPlay/releases/latest/download/get.sh | bash -s -- proxmox cluster --nodes 3
+```
+
+Crea **un máster** (orquestador) y **N nodos gaming** como VMs de Ubuntu 24.04 y lo deja todo funcionando:
+
+1. Baja la imagen `ghcr.io/fieropirata275/cloudplay-pve` (sin Docker: get.sh descarga sus capas, comprueba el SHA256
+   de cada una y ejecuta el script en el host, que es donde están `qm` y `pvesh`).
+2. Elige solo el almacenamiento (local-lvm, local-zfs o el más libre), el puente (`vmbr0`), la puerta de enlace y las
+   **GPUs libres** (NVIDIA/AMD con IOMMU; no toca la que usa la consola de Proxmox ni las que ya tenga otra VM).
+3. Ajusta CPU y memoria de cada nodo a lo que tiene el host (hasta 8 núcleos y 16 GB) y enseña el plan antes de crear.
+4. El máster se instala solo con cloud-init en modo red local (o con tu `--domain`), con un token de unión y una
+   contraseña generados aquí. Mientras, se ve en directo qué está haciendo dentro de la VM.
+5. Los nodos (una GPU en passthrough cada uno si hay; si no, codifican por CPU) se instalan y se unen solos.
+6. Al final imprime la URL, el usuario y la contraseña, y los guarda en `/root/cloudplay-cluster.txt` (solo root).
+
+| Opción | Por defecto | |
+|---|---|---|
+| `--nodes N` | 1 | nodos gaming |
+| `--master-ip 192.168.1.50/24` | DHCP | IP fija del máster (recomendado); la puerta de enlace y el DNS salen del host |
+| `--gpu-pci auto\|none\|0000:01:00,…` | auto | GPUs para los nodos, una por nodo |
+| `--cores` / `--memory` / `--disk` | según el host / 64 GB | de cada nodo |
+| `--master-cores` / `--master-memory` / `--master-disk` | 4 / 8192 / 48 | del máster |
+| `--domain D [--tunnel-token T]` | — | plataforma con dominio en vez de por IP |
+| `--storage` / `--bridge` | auto | dónde van los discos y la red |
+| `--yes` | — | sin preguntar |
+
+Para crecer más tarde: `… | bash -s -- proxmox cluster-add 2`.
+
 ## Opción C · Proxmox VE (plantilla + clones)
 
 ```bash

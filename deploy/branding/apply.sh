@@ -64,7 +64,8 @@ ESC=$'\e'
   printf '  %s[38;5;63m ▀██████████▀ %s[0m  %s[%sm%s%s[0m\n' "$ESC" "$ESC" "$ESC" "$COLOR" "$LABEL" "$ESC"
   printf '\n'
   printf '  Máquina: \\n   ·   IP: \\4\n'
-  if [ -n "$DOMAIN" ]; then printf '  Plataforma: https://%s\n' "$DOMAIN"; fi
+  # Se acepta un dominio (https) o una URL completa (modo red local: http://IP)
+  if [ -n "$DOMAIN" ]; then case "$DOMAIN" in *://*) printf '  Plataforma: %s\n' "$DOMAIN" ;; *) printf '  Plataforma: https://%s\n' "$DOMAIN" ;; esac; fi
   printf '  Estado: sudo cloudplay status\n\n'
 } > /etc/issue
 echo "Marca de arranque aplicada ($LABEL)"

@@ -1,5 +1,11 @@
-# CP_SITE es el dominio (TLS automático de Let's Encrypt) o, detrás de Cloudflare Tunnel,
-# "http://dominio" (Cloudflare pone el TLS y el túnel llega a Caddy por HTTP).
+# CP_SITE es el dominio (TLS automático de Let's Encrypt), detrás de Cloudflare Tunnel "http://dominio" (Cloudflare
+# pone el TLS y el túnel llega a Caddy por HTTP) o, en modo red local sin dominio, ":80" (cualquier IP o nombre).
+{
+	# En modo red local (CP_AUTO_HTTPS=disable_redirects) http://IP no salta a https: los nodos y quien no quiera
+	# aceptar el certificado propio entran por HTTP. Por defecto no cambia nada.
+	auto_https {$CP_AUTO_HTTPS:ignore_loaded_certs}
+}
+
 (api_upstream) {
 	# Dos réplicas: si una se está actualizando o cae, Caddy reintenta en la otra
 	reverse_proxy api-a:8000 api-b:8000 {
@@ -17,7 +23,8 @@
 	}
 }
 
-{$CP_SITE} {
+# Toda la plataforma (API, WebSocket, instalador de nodos y cliente web): la sirven los dos bloques de abajo
+(cp_app) {
 	encode zstd gzip
 
 	handle /api/* {
@@ -48,6 +55,18 @@
 		X-Content-Type-Options nosniff
 		Referrer-Policy no-referrer
 	}
+}
+
+{$CP_SITE} {
+	import cp_app
+}
+
+# Modo red local (sin dominio, p. ej. el clúster de Proxmox): además de http://IP, https://IP con un certificado de
+# la CA interna de Caddy, porque el navegador solo deja usar micro, cámara y WebHID en HTTPS. Sin modo red local este
+# bloque queda en un nombre que no existe y no hace nada.
+{$CP_LAN_TLS_SITE:https://lan.cloudplay.invalid} {
+	tls internal
+	import cp_app
 }
 
 # Landing comercial (Next.js exportado a estático). Construir antes:

@@ -13,7 +13,7 @@ x-api: &api
   environment:
     CP_DATABASE_URL: postgresql+asyncpg://cloudplay:${POSTGRES_PASSWORD}@postgres:5432/cloudplay
     CP_REDIS_URL: redis://redis:6379/0
-    CP_PUBLIC_URL: https://${CP_DOMAIN}
+    CP_PUBLIC_URL: ${CP_PUBLIC_URL:-https://${CP_DOMAIN}}
     CP_STUN_URLS: ${CP_STUN_URLS:-stun:${CP_DOMAIN}:3478}
     CP_TURN_URLS: ${CP_TURN_URLS:-turn:${CP_DOMAIN}:3478?transport=udp,turn:${CP_DOMAIN}:3478?transport=tcp,turns:${CP_DOMAIN}:5349?transport=tcp}
     CP_TURN_SECRET: ${TURN_SECRET}
@@ -47,6 +47,8 @@ services:
       # Con Cloudflare Tunnel el TLS lo pone Cloudflare: Caddy sirve HTTP (CP_SITE=http://play.example.com)
       CP_SITE: ${CP_SITE:-${CP_DOMAIN}}
       LANDING_SITE: ${LANDING_SITE:-${LANDING_DOMAIN:-landing.localhost}}
+      CP_LAN_TLS_SITE: ${CP_LAN_TLS_SITE:-https://lan.cloudplay.invalid}
+      CP_AUTO_HTTPS: ${CP_AUTO_HTTPS:-ignore_loaded_certs}
     volumes:
       - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - ./clients/web:/srv/web:ro
